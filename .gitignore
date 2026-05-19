@@ -1,0 +1,23 @@
+# Environment Variables (CRITICAL)
+.env
+.env.*
+!.env.example
+
+# Node.js dependencies
+node_modules/
+npm-debug.log
+
+# Next.js build output (apps/web)
+.next/
+out/
+build/
+
+# Python artifacts (for your exercise_adapter.py)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS generated files
+.DS_Store
+Thumbs.db
