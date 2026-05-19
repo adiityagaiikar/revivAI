@@ -11,8 +11,6 @@ import os
 import argparse
 import base64
 
-# Add parent directory to path to import analyzers
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 try:
     from warrior_analyzer import WarriorAnalyzer
