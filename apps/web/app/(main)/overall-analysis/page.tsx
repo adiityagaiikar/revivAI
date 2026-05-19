@@ -10,6 +10,7 @@ import {
   CartesianGrid, Legend, LineChart, Line
 } from 'recharts'
 import { getGameScores } from "../cognitive-games/utils/gameScores"
+import { API } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type HandFoldingAvg  = { session: number; avgAngle: number; totalScore: number; date: string }
@@ -137,7 +138,7 @@ export default function OverallAnalysisPage() {
       const token = localStorage.getItem('token')
       if (!token) { setLoading(false); router.push('/login'); return }
       try {
-        const res = await fetch('http://localhost:5000/api/dashboard/patient', {
+        const res = await fetch(`${API}/dashboard/patient`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         if (res.ok) setDashboardData(await res.json())

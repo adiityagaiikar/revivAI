@@ -5,6 +5,7 @@ import { Users, FileText, CheckSquare, Activity } from "lucide-react"
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { API } from '@/lib/api'
 
 const ICONS: Record<string, any> = {
   Users, FileText, CheckSquare, Activity
@@ -26,8 +27,8 @@ export default function DoctorDashboard() {
 
       try {
         const [patientsRes, dashRes] = await Promise.all([
-          fetch('http://localhost:5000/api/users/associations', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('http://localhost:5000/api/dashboard/doctor', { headers: { 'Authorization': `Bearer ${token}` } })
+          fetch(`${API}/users/associations`, { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API}/dashboard/doctor`, { headers: { 'Authorization': `Bearer ${token}` } })
         ])
         
         if (patientsRes.ok) {
@@ -50,7 +51,7 @@ export default function DoctorDashboard() {
   const refreshDashboard = useCallback(async () => {
     const token = localStorage.getItem('token')
     if (!token) return
-    const dashRes = await fetch('http://localhost:5000/api/dashboard/doctor', {
+    const dashRes = await fetch(`${API}/dashboard/doctor`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (dashRes.ok) {
@@ -63,7 +64,7 @@ export default function DoctorDashboard() {
     const token = localStorage.getItem('token')
     if (!token) return
     try {
-      const res = await fetch(`http://localhost:5000/api/dashboard/doctor/tasks/${taskId}`, {
+      const res = await fetch(`${API}/dashboard/doctor/tasks/${taskId}`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,

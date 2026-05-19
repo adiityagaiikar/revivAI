@@ -9,6 +9,7 @@ import { Spotlight } from "@workspace/ui/components/spotlight"
 import { Mail, Lock, User, UserCircle, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { API } from '@/lib/api'
 
 export default function DoctorRegisterPage() {
   const router = useRouter()
@@ -28,7 +29,7 @@ export default function DoctorRegisterPage() {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/signup', {
+      const response = await fetch(`${API}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

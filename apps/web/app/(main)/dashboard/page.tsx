@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { usePatientPlan } from "@/hooks/usePatientPlan"
 import { ALL_EXERCISES, ALL_COGNITIVE_GAMES, filterExercisesByPlan, filterGamesByPlan, type PatientPlan } from "@/lib/activity-catalog"
+import { API } from '@/lib/api'
 
 const ICONS: Record<string, any> = {
   Activity, Flame, Timer, Trophy
@@ -43,7 +44,7 @@ export default function DashboardPage() {
     formData.append('file', file)
     const token = localStorage.getItem('token')
     try {
-      const res = await fetch('http://localhost:5000/api/history/upload', {
+      const res = await fetch(`${API}/history/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -51,7 +52,7 @@ export default function DashboardPage() {
       if (res.ok) {
         alert('Medical history securely extracted via Google Gemini and saved! Your doctor can now access it.')
         // Refresh medical history display
-        const meRes = await fetch('http://localhost:5000/api/history/me', {
+        const meRes = await fetch(`${API}/history/me`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         if (meRes.ok) {
@@ -87,8 +88,8 @@ export default function DashboardPage() {
 
       try {
         const [doctorsRes, dashRes] = await Promise.all([
-          fetch('http://localhost:5000/api/users/associations', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('http://localhost:5000/api/dashboard/patient', { headers: { 'Authorization': `Bearer ${token}` } })
+          fetch(`${API}/users/associations`, { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API}/dashboard/patient`, { headers: { 'Authorization': `Bearer ${token}` } })
         ])
         
         if (doctorsRes.ok) {
@@ -101,7 +102,7 @@ export default function DashboardPage() {
         }
 
         // Fetch patient's own OCR-extracted medical history
-        const histRes = await fetch('http://localhost:5000/api/history/me', {
+        const histRes = await fetch(`${API}/history/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         if (histRes.ok) {

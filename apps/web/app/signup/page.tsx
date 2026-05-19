@@ -9,6 +9,7 @@ import { Spotlight } from "@workspace/ui/components/spotlight"
 import { User, Mail, Lock, UserPlus, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { API } from '@/lib/api'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -34,7 +35,7 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/signup', {
+      const response = await fetch(`${API}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -15,6 +15,7 @@ import {
 } from "@/lib/activity-catalog"
 import { usePatientPlan } from "@/hooks/usePatientPlan"
 import { getGameScores } from "./utils/gameScores"
+import { API } from '@/lib/api'
 
 const ICONS: Record<string, typeof Brain> = { Brain, Zap, Target, Gamepad2 }
 
@@ -44,7 +45,7 @@ export default function CognitiveGamesPage() {
       const token = localStorage.getItem('token')
       if (!token) { setLoading(false); router.push('/login'); return }
       try {
-        const res = await fetch('http://localhost:5000/api/dashboard/patient', {
+        const res = await fetch(`${API}/dashboard/patient`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (res.ok) {

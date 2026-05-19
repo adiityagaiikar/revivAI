@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 
-const API = 'http://localhost:5000/api'
+import { API } from '@/lib/api'
 
 type StatusFilter = 'all' | 'Pending Review' | 'Normal' | 'Requires Attention'
 

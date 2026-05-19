@@ -9,6 +9,7 @@ import { Spotlight } from "@workspace/ui/components/spotlight"
 import { Mail, Lock, LogIn, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { API } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -26,7 +27,7 @@ export default function LoginPage() {
 
     try {
       console.log('Attempting login...')
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const response = await fetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -54,7 +55,7 @@ export default function LoginPage() {
     } catch (err: any) {
       console.error('Login error:', err)
       if (err.message === 'Failed to fetch') {
-        setError('Cannot connect to server. Please make sure backend is running on port 5000.')
+        setError('Cannot connect to server. Please make sure the backend is running.')
       } else {
         setError(err.message)
       }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { PatientPlan } from '@/lib/activity-catalog'
 
-const API = 'http://localhost:5000/api'
+import { API } from '@/lib/api'
 
 export function usePatientPlan() {
   const [plan, setPlan] = useState<PatientPlan | null>(null)

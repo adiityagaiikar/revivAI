@@ -14,7 +14,7 @@ import {
 import { Users, Search, Activity, Mail, Calendar, ListChecks, FileText, Download } from "lucide-react"
 import { ALL_EXERCISES, ALL_COGNITIVE_GAMES } from "@/lib/activity-catalog"
 
-const API = 'http://localhost:5000/api'
+import { API } from '@/lib/api'
 
 function PatientsPageInner() {
   const [patients, setPatients] = useState<any[]>([])
@@ -48,7 +48,7 @@ function PatientsPageInner() {
       }
 
       try {
-        const response = await fetch('http://localhost:5000/api/users/associations', {
+        const response = await fetch(`${API}/users/associations`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         if (response.ok) {
@@ -81,7 +81,7 @@ function PatientsPageInner() {
     setDownloadingId(patientId)
     try {
       const res = await fetch(
-        `http://localhost:5000/api/dashboard/doctor/patients/${patientId}/health-report-pdf`,
+        `${API}/dashboard/doctor/patients/${patientId}/health-report-pdf`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (!res.ok) {

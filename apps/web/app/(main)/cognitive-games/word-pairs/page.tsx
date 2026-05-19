@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import GameShell from '../components/GameShell';
 import { Trophy } from 'lucide-react';
 import { saveGameScore } from '../utils/gameScores';
+import { API } from '@/lib/api';
 
 const ALL_PAIRS = [
   { q: "Ocean", a: "Sand" },
@@ -67,7 +68,7 @@ export default function WordPairsGame() {
     if (!token) return
 
     try {
-      await fetch('http://localhost:5000/api/dashboard/activity', {
+      await fetch(`${API}/dashboard/activity`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

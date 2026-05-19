@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 
-const API = 'http://localhost:5000/api'
+import { API } from '@/lib/api'
 
 export default function TodoPage() {
   const [tasks, setTasks] = useState<any[]>([])
