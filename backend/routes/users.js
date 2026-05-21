@@ -16,6 +16,18 @@ function sanitizeSlugs(input, allowedSet) {
   return [...new Set(input.filter((s) => typeof s === 'string' && allowedSet.has(s)))];
 }
 
+// Get current authenticated user's profile
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user).select('name email username role');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ id: user._id, name: user.name, email: user.email, username: user.username, role: user.role });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get associated users based on role
 router.get('/associations', auth, async (req, res) => {
   try {

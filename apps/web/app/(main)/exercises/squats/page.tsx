@@ -2,18 +2,16 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision'
-import { Card } from "@workspace/ui/components/card"
-import { Button } from "@workspace/ui/components/button"
-import { Activity, Play, Square, RotateCcw, ArrowLeft, VideoOff, Download, Mic } from "lucide-react"
-import Link from "next/link"
+import { Mic } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { ElevenLabsVoiceChat } from "@/components/elevenlabs-voice-chat"
+import { ElevenLabsVoiceChat } from '@/components/elevenlabs-voice-chat'
+import ExerciseShell from '../components/ExerciseShell'
 
-const AGENT_ID = "agent_5201kndzmwmmew99xsex4237d84t"
+const AGENT_ID = 'agent_5201kndzmwmmew99xsex4237d84t'
 
 const L_HIP = 23, L_KNEE = 25, L_ANKLE = 27
 const R_HIP = 24, R_KNEE = 26, R_ANKLE = 28
-
 const UP_THRESHOLD   = 150
 const DOWN_THRESHOLD = 110
 const GOOD_DEPTH_MIN = 80
@@ -25,10 +23,10 @@ type SessionEntry = { timestamp: number; wallTime: number; angle: number; reps: 
 type SessionAvg   = { session: number; avgAngle: number; totalReps: number; date: string }
 
 function calcAngle(a: number[], b: number[], c: number[]) {
-  const ab = [a[0] - b[0], a[1] - b[1]]
-  const cb = [c[0] - b[0], c[1] - b[1]]
+  const ab = [a[0]! - b[0]!, a[1]! - b[1]!]
+  const cb = [c[0]! - b[0]!, c[1]! - b[1]!]
   const dot = ab[0]! * cb[0]! + ab[1]! * cb[1]!
-  const mag = Math.sqrt(ab[0]!**2 + ab[1]!**2) * Math.sqrt(cb[0]!**2 + cb[1]!**2)
+  const mag = Math.sqrt(ab[0]! ** 2 + ab[1]! ** 2) * Math.sqrt(cb[0]! ** 2 + cb[1]! ** 2)
   return (Math.acos(Math.min(Math.max(dot / (mag || 1), -1), 1)) * 180) / Math.PI
 }
 
@@ -40,6 +38,22 @@ function downloadLog(key: string, log: SessionEntry[]) {
   URL.revokeObjectURL(url)
 }
 
+const INSTRUCTIONS = [
+  'Stand with feet shoulder-width apart, toes slightly outward',
+  'Keep your chest up and core engaged',
+  'Lower your hips back and down as if sitting in a chair',
+  'Go down until thighs are parallel to the ground',
+  'Push through your heels to return to standing',
+  'Keep knees tracking over toes — don\'t let them cave inward',
+]
+
+const TIPS = [
+  'Position camera at side angle for best tracking',
+  'Keep full body in frame',
+  'Session data saved automatically on stop',
+  'Runs entirely in your browser — no backend needed',
+]
+
 export default function SquatsPage() {
   const videoRef      = useRef<HTMLVideoElement>(null)
   const canvasRef     = useRef<HTMLCanvasElement>(null)
@@ -49,13 +63,13 @@ export default function SquatsPage() {
   const sessionLogRef = useRef<SessionEntry[]>([])
   const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [ready,          setReady]          = useState(false)
-  const [running,        setRunning]        = useState(false)
-  const [stats,          setStats]          = useState({ reps: 0, angle: 0, feedback: '' })
-  const [err,            setErr]            = useState('')
-  const [summary,        setSummary]        = useState<{ total: number; peakReps: number; minAngle: number } | null>(null)
-  const [scorePopup,     setScorePopup]     = useState<string | null>(null)
-  const [voiceChatOpen,  setVoiceChatOpen]  = useState(false)
+  const [ready,         setReady]         = useState(false)
+  const [running,       setRunning]       = useState(false)
+  const [stats,         setStats]         = useState({ reps: 0, angle: 0, feedback: '', stage: 'up' })
+  const [err,           setErr]           = useState('')
+  const [summary,       setSummary]       = useState<{ peakReps: number; minAngle: number; total: number } | null>(null)
+  const [scorePopup,    setScorePopup]    = useState<string | null>(null)
+  const [voiceChatOpen, setVoiceChatOpen] = useState(false)
   const [sessionHistory, setSessionHistory] = useState<SessionAvg[]>(() => {
     if (typeof window === 'undefined') return []
     try { return JSON.parse(localStorage.getItem('squats-session-history') ?? '[]') } catch { return [] }
@@ -70,8 +84,7 @@ export default function SquatsPage() {
         )
         const pl = await PoseLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
             delegate: 'GPU',
           },
           runningMode: 'VIDEO',
@@ -98,12 +111,10 @@ export default function SquatsPage() {
   }, [])
 
   const detect = useCallback(() => {
-    const video  = videoRef.current
-    const canvas = canvasRef.current
-    const pl     = landmarkerRef.current
+    const video = videoRef.current, canvas = canvasRef.current, pl = landmarkerRef.current
     if (!video || !canvas || !pl || video.readyState < 2) { rafRef.current = requestAnimationFrame(detect); return }
 
-    canvas.width  = video.videoWidth  || 640
+    canvas.width = video.videoWidth || 640
     canvas.height = video.videoHeight || 480
     const ctx = canvas.getContext('2d')!
     ctx.save(); ctx.translate(canvas.width, 0); ctx.scale(-1, 1); ctx.drawImage(video, 0, 0); ctx.restore()
@@ -111,7 +122,6 @@ export default function SquatsPage() {
     const results = pl.detectForVideo(video, performance.now())
     const s = stateRef.current
     let feedback = ''
-    let displayAngle = Math.round(s.smoothed / 20) * 20
 
     if (results.landmarks.length > 0) {
       const lm  = results.landmarks[0]!
@@ -122,18 +132,12 @@ export default function SquatsPage() {
       const rightOk = Math.min(vis(R_HIP), vis(R_KNEE), vis(R_ANKLE)) >= MIN_VIS
 
       let angle = 0
-      if (leftOk && rightOk) {
-        angle = (calcAngle(pt(L_HIP), pt(L_KNEE), pt(L_ANKLE)) +
-                 calcAngle(pt(R_HIP), pt(R_KNEE), pt(R_ANKLE))) / 2
-      } else if (leftOk) {
-        angle = calcAngle(pt(L_HIP), pt(L_KNEE), pt(L_ANKLE))
-      } else if (rightOk) {
-        angle = calcAngle(pt(R_HIP), pt(R_KNEE), pt(R_ANKLE))
-      }
+      if (leftOk && rightOk) angle = (calcAngle(pt(L_HIP), pt(L_KNEE), pt(L_ANKLE)) + calcAngle(pt(R_HIP), pt(R_KNEE), pt(R_ANKLE))) / 2
+      else if (leftOk)       angle = calcAngle(pt(L_HIP), pt(L_KNEE), pt(L_ANKLE))
+      else if (rightOk)      angle = calcAngle(pt(R_HIP), pt(R_KNEE), pt(R_ANKLE))
 
       if (angle > 0) s.smoothed = s.smoothed ? ANGLE_SMOOTH * angle + (1 - ANGLE_SMOOTH) * s.smoothed : angle
       const sa = s.smoothed
-
       if (s.cooldown > 0) s.cooldown--
 
       const prevReps = s.reps
@@ -144,12 +148,10 @@ export default function SquatsPage() {
         s.started = true; s.stage = 'down'
       }
 
-      // Score popup on each completed rep
       if (s.reps > prevReps) {
-        setScorePopup(`+1 rep`)
+        setScorePopup('+1 rep')
         if (popupTimerRef.current) clearTimeout(popupTimerRef.current)
         popupTimerRef.current = setTimeout(() => setScorePopup(null), 1200)
-        // Log only on rep completion
         sessionLogRef.current.push({ timestamp: performance.now(), wallTime: Date.now(), angle: Math.round(sa), reps: s.reps })
       }
 
@@ -161,28 +163,26 @@ export default function SquatsPage() {
         }
       }
 
-      displayAngle = Math.round(sa / 20) * 20
-
       const du = new DrawingUtils(ctx)
       ctx.save(); ctx.translate(canvas.width, 0); ctx.scale(-1, 1)
-      du.drawLandmarks(lm, { color: '#00FF00', lineWidth: 2, radius: 4 })
-      du.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#00BFFF', lineWidth: 2 })
+      du.drawLandmarks(lm, { color: '#a78bfa', lineWidth: 2, radius: 4 })
+      du.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#67e8f9', lineWidth: 2 })
       ctx.restore()
     }
 
-    setStats({ reps: s.reps, angle: displayAngle, feedback })
+    setStats({ reps: s.reps, angle: Math.round(s.smoothed / 20) * 20, feedback, stage: s.stage })
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
-  const start = useCallback(async () => {
+  const handleStart = useCallback(async () => {
     setErr(''); setSummary(null); sessionLogRef.current = []
     await startCamera()
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
-    setStats({ reps: 0, angle: 0, feedback: '' })
+    setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' })
     setRunning(true); rafRef.current = requestAnimationFrame(detect)
   }, [startCamera, detect])
 
-  const stop = useCallback(() => {
+  const handleStop = useCallback(() => {
     cancelAnimationFrame(rafRef.current)
     if (popupTimerRef.current) clearTimeout(popupTimerRef.current)
     setScorePopup(null)
@@ -193,7 +193,7 @@ export default function SquatsPage() {
       const peakReps = Math.max(...log.map(e => e.reps))
       const minAngle = Math.min(...log.map(e => e.angle))
       const avgAngle = Math.round(log.reduce((s, e) => s + e.angle, 0) / log.length)
-      setSummary({ total: log.length, peakReps, minAngle })
+      setSummary({ peakReps, minAngle, total: log.length })
       setSessionHistory(prev => {
         const next = [...prev, { session: prev.length + 1, avgAngle, totalReps: peakReps, date: new Date().toLocaleDateString() }]
         localStorage.setItem('squats-session-history', JSON.stringify(next))
@@ -203,161 +203,79 @@ export default function SquatsPage() {
     sessionLogRef.current = []
   }, [stopCamera])
 
-  const reset = useCallback(() => {
+  const handleReset = useCallback(() => {
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
-    setStats({ reps: 0, angle: 0, feedback: '' }); setSummary(null)
+    setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' }); setSummary(null)
     if (popupTimerRef.current) clearTimeout(popupTimerRef.current); setScorePopup(null)
   }, [])
 
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); stopCamera() }, [stopCamera])
 
-  const instructions = [
-    "Stand with feet shoulder-width apart, toes slightly outward",
-    "Keep your chest up and core engaged",
-    "Lower your hips back and down as if sitting in a chair",
-    "Go down until thighs are parallel to the ground",
-    "Push through your heels to return to standing",
-    "Keep knees tracking over toes, don't let them cave inward",
-  ]
-
   return (
-    <div className="space-y-6">
-      <div className="relative">
-        <div className="flex items-center gap-4 mb-4">
-          <Link href="/exercises">
-            <Button variant="ghost" className="text-white hover:bg-white/10"><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
-          </Link>
-        </div>
-        <h1 className="text-4xl font-bold text-white mb-2">Squats</h1>
-        <p className="text-neutral-400">Build lower body strength with proper squat form. AI-powered feedback runs entirely in your browser.</p>
-      </div>
+    <>
+      <ExerciseShell
+        exerciseName="Squats"
+        description="Build lower body strength with proper squat form. AI-powered feedback runs entirely in your browser."
+        accentColor="cyan"
+        ready={ready}
+        running={running}
+        stats={stats}
+        error={err}
+        summary={summary ?? undefined}
+        scorePopup={scorePopup ?? undefined}
+        instructions={INSTRUCTIONS}
+        tips={TIPS}
+        demoGif="https://media1.tenor.com/m/1NY6qOs30XIAAAAd/goblet-squad.gif"
+        onStart={handleStart}
+        onStop={handleStop}
+        onReset={handleReset}
+        onDownload={() => downloadLog('squats', JSON.parse(localStorage.getItem('squats-session-log') ?? '[]'))}
+        videoSlot={<video ref={videoRef} autoPlay playsInline muted className="hidden" />}
+        canvasSlot={
+          <canvas
+            ref={canvasRef}
+            className={`w-full h-full object-cover absolute inset-0 ${running ? 'block' : 'hidden'}`}
+          />
+        }
+        extraControls={
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            onClick={() => setVoiceChatOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <Mic className="h-4 w-4" />
+            Voice Coach
+          </motion.button>
+        }
+      />
 
-      {err && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">{err}</div>}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 bg-black/[0.96] border-white/10 p-4">
-          <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden">
-            {!running && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400 z-20 bg-neutral-900">
-                {!ready ? (
-                  <><div className="animate-spin h-8 w-8 mb-4 border-4 border-blue-500 border-t-transparent rounded-full" /><p>Loading pose model…</p></>
-                ) : (
-                  <><VideoOff className="h-12 w-12 mb-4" /><p>Camera off — click Start to begin</p></>
-                )}
-              </div>
-            )}
-            <video ref={videoRef} autoPlay playsInline muted className="hidden" />
-            <canvas ref={canvasRef} className={`w-full h-full object-cover absolute inset-0 ${running ? 'block' : 'hidden'}`} />
-
-            {running && (
-              <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm rounded-lg p-3 space-y-1 z-30">
-                <div className="text-white"><span className="text-neutral-400 text-sm">Reps:</span><span className="text-2xl font-bold ml-2">{stats.reps}</span></div>
-                <div className="text-white"><span className="text-neutral-400 text-sm">Angle:</span><span className="text-lg ml-2">{stats.angle}°</span></div>
-                <div className="text-xs text-neutral-400 mt-1">Stage: <span className="text-white capitalize">{stateRef.current.stage}</span></div>
-              </div>
-            )}
-
-            {stats.feedback && running && (
-              <div className={`absolute bottom-4 left-4 right-4 backdrop-blur-sm rounded-lg p-3 text-white text-center z-30 ${stats.feedback.startsWith('✓') ? 'bg-green-600/80' : 'bg-red-500/80'}`}>
-                {stats.feedback}
-              </div>
-            )}
-
-            {scorePopup && running && (
-              <div className="absolute inset-0 flex items-center justify-center z-40 pointer-events-none">
-                <span className="text-red-400 text-5xl font-extrabold drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] animate-bounce">{scorePopup}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-center gap-4 mt-4">
-            {!running ? (
-              <Button onClick={start} disabled={!ready} className="bg-blue-500 hover:bg-blue-600 text-white">
-                <Play className="h-4 w-4 mr-2" />{ready ? 'Start' : 'Loading model…'}
-              </Button>
-            ) : (
-              <Button onClick={stop} className="bg-red-500 hover:bg-red-600 text-white"><Square className="h-4 w-4 mr-2" /> Stop</Button>
-            )}
-            <Button onClick={reset} variant="outline" className="border-white/20 text-white hover:bg-white/10"><RotateCcw className="h-4 w-4 mr-2" /> Reset</Button>
-            <Button onClick={() => setVoiceChatOpen(true)} variant="outline" className="border-white/20 text-white hover:bg-white/10"><Mic className="h-4 w-4 mr-2" /> Voice Coach</Button>
-          </div>
-
-          {summary && !running && (
-            <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-lg">
-              <h3 className="text-white font-semibold mb-3">Session Summary</h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div><p className="text-2xl font-bold text-blue-400">{summary.peakReps}</p><p className="text-xs text-neutral-400 mt-1">Peak Reps</p></div>
-                <div><p className="text-2xl font-bold text-green-400">{summary.minAngle}°</p><p className="text-xs text-neutral-400 mt-1">Min Angle</p></div>
-                <div><p className="text-2xl font-bold text-neutral-300">{summary.total}</p><p className="text-xs text-neutral-400 mt-1">Reps Logged</p></div>
-              </div>
-              <Button
-                onClick={() => downloadLog('squats', JSON.parse(localStorage.getItem('squats-session-log') ?? '[]'))}
-                variant="outline" className="w-full mt-4 border-white/20 text-white hover:bg-white/10 text-sm"
-              >
-                <Download className="h-4 w-4 mr-2" /> Download Session JSON
-              </Button>
-            </div>
-          )}
-        </Card>
-
-        <Card className="bg-black/[0.96] border-white/10 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-purple-500/20"><Activity className="h-5 w-5 text-purple-400" /></div>
-            <h2 className="text-lg font-semibold text-white">Instructions</h2>
-          </div>
-          <div className="relative w-full aspect-video mb-6 rounded-lg overflow-hidden border border-white/10 bg-neutral-900 shadow-lg flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://media1.tenor.com/m/1NY6qOs30XIAAAAd/goblet-squad.gif"
-              alt="Goblet squat demo"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur px-2 py-1 rounded text-xs font-semibold tracking-wider text-white pointer-events-none">DEMO</div>
-          </div>
-          <ol className="space-y-4">
-            {instructions.map((step, i) => (
-              <li key={i} className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-sm text-white font-medium">{i + 1}</span>
-                <span className="text-neutral-300">{step}</span>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-6 pt-6 border-t border-white/10">
-            <h3 className="text-sm font-medium text-white mb-3">Tips</h3>
-            <ul className="space-y-2 text-sm text-neutral-400">
-              <li>• Ensure good lighting</li>
-              <li>• Position camera at side angle</li>
-              <li>• Keep full body in frame</li>
-              <li>• Session data saved automatically on stop</li>
-            </ul>
-          </div>
-        </Card>
-      </div>
-
+      {/* Session history chart */}
       {sessionHistory.length > 0 && (
-        <Card className="bg-black/[0.96] border-white/10 p-6">
-          <h3 className="text-white font-semibold mb-1">Session History</h3>
-          <p className="text-xs text-neutral-400 mb-4">Average angle and peak reps across all sessions</p>
-          <ResponsiveContainer width="100%" height={260}>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-6 mt-6">
+          <h3 className="text-white font-semibold mb-1 text-sm">Session History</h3>
+          <p className="text-xs text-white/35 mb-4">Average angle and peak reps across all sessions</p>
+          <ResponsiveContainer width="100%" height={240}>
             <LineChart data={sessionHistory} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-              <XAxis dataKey="session" stroke="#555" fontSize={12} tickFormatter={(v) => `S${v}`} />
-              <YAxis yAxisId="reps"  stroke="#3b82f6" fontSize={12} />
-              <YAxis yAxisId="angle" orientation="right" stroke="#22c55e" fontSize={12} domain={[0, 180]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+              <XAxis dataKey="session" stroke="#444" fontSize={11} tickFormatter={(v) => `S${v}`} />
+              <YAxis yAxisId="reps"  stroke="#67e8f9" fontSize={11} />
+              <YAxis yAxisId="angle" orientation="right" stroke="#a78bfa" fontSize={11} domain={[0, 180]} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px', fontSize: 12 }}
+                contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: 11 }}
                 formatter={(val: any, name: any) => [name === 'totalReps' ? `${val} reps` : `${val}°`, name === 'totalReps' ? 'Peak Reps' : 'Avg Angle']}
                 labelFormatter={(l) => `Session ${l}`}
               />
-              <Legend formatter={(val) => val === 'totalReps' ? 'Peak Reps' : 'Avg Angle (°)'} wrapperStyle={{ fontSize: 12, color: '#aaa' }} />
-              <Line yAxisId="reps"  type="monotone" dataKey="totalReps" stroke="#3b82f6" strokeWidth={2} dot={{ r: 5, fill: '#3b82f6' }} activeDot={{ r: 7 }} />
-              <Line yAxisId="angle" type="monotone" dataKey="avgAngle"  stroke="#22c55e" strokeWidth={2} dot={{ r: 5, fill: '#22c55e' }} activeDot={{ r: 7 }} />
+              <Legend formatter={(val) => val === 'totalReps' ? 'Peak Reps' : 'Avg Angle (°)'} wrapperStyle={{ fontSize: 11, color: '#666' }} />
+              <Line yAxisId="reps"  type="monotone" dataKey="totalReps" stroke="#67e8f9" strokeWidth={2} dot={{ r: 4, fill: '#67e8f9' }} activeDot={{ r: 6 }} />
+              <Line yAxisId="angle" type="monotone" dataKey="avgAngle"  stroke="#a78bfa" strokeWidth={2} dot={{ r: 4, fill: '#a78bfa' }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
-        </Card>
+        </div>
       )}
 
       <ElevenLabsVoiceChat agentId={AGENT_ID} active={voiceChatOpen} onClose={() => setVoiceChatOpen(false)} />
-    </div>
+    </>
   )
 }

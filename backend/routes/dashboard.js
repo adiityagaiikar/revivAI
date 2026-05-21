@@ -334,4 +334,155 @@ router.patch('/doctor/reports/:reportId', auth, async (req, res) => {
   }
 });
 
+/* ══════════════════════════════════════════════════════════
+   GAMIFICATION ROUTES
+══════════════════════════════════════════════════════════ */
+
+// Theme unlock thresholds
+const THEME_UNLOCKS = {
+  'neon-cyan':       0,
+  'matrix-green':    3,
+  'cyberpunk-yellow': 7,
+};
+
+/**
+ * Helper: update streak + weekly count after a workout is logged.
+ * Called internally whenever a Fitness activity is saved.
+ */
+async function updateStreakAndWeekly(userId) {
+  const user = await User.findById(userId).select(
+    'currentStreak longestStreak lastWorkoutDate weeklyWorkoutCount weeklyWindowStart unlockedThemes'
+  );
+  if (!user) return;
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+
+  // ── Streak logic ──────────────────────────────────────────
+  if (user.lastWorkoutDate) {
+    const last = new Date(user.lastWorkoutDate);
+    const lastStr = last.toISOString().slice(0, 10);
+    const diffDays = Math.floor((now - last) / 86400000);
+
+    if (lastStr === todayStr) {
+      // Already worked out today — no streak change
+    } else if (diffDays === 1) {
+      user.currentStreak += 1;
+    } else {
+      user.currentStreak = 1; // streak broken
+    }
+  } else {
+    user.currentStreak = 1;
+  }
+
+  user.lastWorkoutDate = now;
+  if (user.currentStreak > (user.longestStreak || 0)) {
+    user.longestStreak = user.currentStreak;
+  }
+
+  // ── Weekly count (rolling 7-day window) ───────────────────
+  const windowStart = user.weeklyWindowStart ? new Date(user.weeklyWindowStart) : null;
+  if (!windowStart || now - windowStart > 7 * 86400000) {
+    user.weeklyWorkoutCount = 1;
+    user.weeklyWindowStart = now;
+  } else {
+    user.weeklyWorkoutCount += 1;
+  }
+
+  // ── Theme unlocks ─────────────────────────────────────────
+  const unlocked = new Set(user.unlockedThemes || ['neon-cyan']);
+  for (const [theme, required] of Object.entries(THEME_UNLOCKS)) {
+    if (user.currentStreak >= required) unlocked.add(theme);
+  }
+  user.unlockedThemes = [...unlocked];
+
+  await user.save();
+  return user;
+}
+
+// Expose the helper so activity route can call it
+router.updateStreakAndWeekly = updateStreakAndWeekly;
+
+// GET /api/dashboard/gamification — current user's gamification state
+router.get('/gamification', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user).select(
+      'currentStreak longestStreak lastWorkoutDate weeklyWorkoutCount unlockedThemes activeTheme name'
+    );
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      currentStreak:    user.currentStreak    || 0,
+      longestStreak:    user.longestStreak    || 0,
+      lastWorkoutDate:  user.lastWorkoutDate  || null,
+      weeklyWorkoutCount: user.weeklyWorkoutCount || 0,
+      unlockedThemes:   user.unlockedThemes   || ['neon-cyan'],
+      activeTheme:      user.activeTheme      || 'neon-cyan',
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /api/dashboard/gamification/theme — set active theme
+router.patch('/gamification/theme', auth, async (req, res) => {
+  try {
+    const { theme } = req.body;
+    const validThemes = Object.keys(THEME_UNLOCKS);
+    if (!validThemes.includes(theme)) {
+      return res.status(400).json({ error: 'Invalid theme' });
+    }
+    const user = await User.findById(req.user).select('unlockedThemes activeTheme');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!(user.unlockedThemes || []).includes(theme)) {
+      return res.status(403).json({ error: 'Theme not unlocked yet' });
+    }
+    user.activeTheme = theme;
+    await user.save();
+    res.json({ activeTheme: user.activeTheme });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/dashboard/leaderboard — top 10 by weekly workout count
+router.get('/leaderboard', auth, async (req, res) => {
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+
+    // Aggregate activity counts per user in the last 7 days
+    const topUsers = await Activity.aggregate([
+      { $match: { type: 'Fitness', date: { $gte: sevenDaysAgo } } },
+      { $group: { _id: '$userId', weeklyScore: { $sum: 1 } } },
+      { $sort: { weeklyScore: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          _id: 0,
+          userId: '$_id',
+          name: '$user.name',
+          weeklyScore: 1,
+          currentStreak: '$user.currentStreak',
+          activeTheme: '$user.activeTheme',
+        },
+      },
+    ]);
+
+    res.json(topUsers);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

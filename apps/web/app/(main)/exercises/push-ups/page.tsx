@@ -2,16 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision'
-import { Card } from "@workspace/ui/components/card"
-import { Button } from "@workspace/ui/components/button"
-import { Activity, Play, Square, RotateCcw, ArrowLeft, VideoOff } from "lucide-react"
-import Link from "next/link"
+import ExerciseShell from '../components/ExerciseShell'
 
-// Elbow angle: L_SHOULDER(11)->L_ELBOW(13)->L_WRIST(15), R_SHOULDER(12)->R_ELBOW(14)->R_WRIST(16)
+/* ── Landmark indices ── */
 const L_SHOULDER = 11, L_ELBOW = 13, L_WRIST = 15
 const R_SHOULDER = 12, R_ELBOW = 14, R_WRIST = 16
 
-// Down: elbow ~90° (range 80–110), Up: elbow ~160° (range 150–170)
 const UP_THRESHOLD   = 150
 const DOWN_THRESHOLD = 110
 const GOOD_DOWN_MIN  = 80
@@ -20,12 +16,28 @@ const ANGLE_SMOOTH   = 0.4
 const MIN_VIS        = 0.45
 
 function calcAngle(a: number[], b: number[], c: number[]) {
-  const ab = [a[0] - b[0], a[1] - b[1]]
-  const cb = [c[0] - b[0], c[1] - b[1]]
-  const dot = ab[0] * cb[0] + ab[1] * cb[1]
-  const mag = Math.sqrt(ab[0] ** 2 + ab[1] ** 2) * Math.sqrt(cb[0] ** 2 + cb[1] ** 2)
+  const ab = [a[0]! - b[0]!, a[1]! - b[1]!]
+  const cb = [c[0]! - b[0]!, c[1]! - b[1]!]
+  const dot = ab[0]! * cb[0]! + ab[1]! * cb[1]!
+  const mag = Math.sqrt(ab[0]! ** 2 + ab[1]! ** 2) * Math.sqrt(cb[0]! ** 2 + cb[1]! ** 2)
   return (Math.acos(Math.min(Math.max(dot / (mag || 1), -1), 1)) * 180) / Math.PI
 }
+
+const INSTRUCTIONS = [
+  'Start in a high plank — hands shoulder-width apart',
+  'Keep your body in a straight line from head to heels',
+  'Lower your chest until elbows reach ~90°',
+  'Push back up to full arm extension',
+  'Keep core tight throughout — don\'t let hips sag',
+  'Breathe in on the way down, out on the way up',
+]
+
+const TIPS = [
+  'Face camera from the side for best tracking',
+  'Good lighting on arms helps accuracy',
+  'Target elbow angle: ~90° at bottom',
+  'Runs entirely in your browser — no backend needed',
+]
 
 export default function PushUpsPage() {
   const videoRef      = useRef<HTMLVideoElement>(null)
@@ -36,9 +48,10 @@ export default function PushUpsPage() {
 
   const [ready,   setReady]   = useState(false)
   const [running, setRunning] = useState(false)
-  const [stats,   setStats]   = useState({ reps: 0, angle: 0, feedback: '' })
+  const [stats,   setStats]   = useState({ reps: 0, angle: 0, feedback: '', stage: 'up' })
   const [err,     setErr]     = useState('')
 
+  /* Load MediaPipe model once */
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -85,20 +98,20 @@ export default function PushUpsPage() {
 
     const results = pl.detectForVideo(video, performance.now())
     const s = stateRef.current
-    let feedback = '', displayAngle = Math.round(s.smoothed)
+    let feedback = ''
 
     if (results.landmarks.length > 0) {
-      const lm = results.landmarks[0]
+      const lm  = results.landmarks[0]!
       const vis = (i: number) => lm[i]?.visibility ?? 0
-      const pt  = (i: number) => [lm[i].x, lm[i].y]
+      const pt  = (i: number) => [lm[i]!.x, lm[i]!.y]
 
       const leftOk  = Math.min(vis(L_SHOULDER), vis(L_ELBOW), vis(L_WRIST)) >= MIN_VIS
       const rightOk = Math.min(vis(R_SHOULDER), vis(R_ELBOW), vis(R_WRIST)) >= MIN_VIS
 
       let angle = 0
-      if (leftOk && rightOk)     angle = (calcAngle(pt(L_SHOULDER), pt(L_ELBOW), pt(L_WRIST)) + calcAngle(pt(R_SHOULDER), pt(R_ELBOW), pt(R_WRIST))) / 2
-      else if (leftOk)           angle = calcAngle(pt(L_SHOULDER), pt(L_ELBOW), pt(L_WRIST))
-      else if (rightOk)          angle = calcAngle(pt(R_SHOULDER), pt(R_ELBOW), pt(R_WRIST))
+      if (leftOk && rightOk)  angle = (calcAngle(pt(L_SHOULDER), pt(L_ELBOW), pt(L_WRIST)) + calcAngle(pt(R_SHOULDER), pt(R_ELBOW), pt(R_WRIST))) / 2
+      else if (leftOk)        angle = calcAngle(pt(L_SHOULDER), pt(L_ELBOW), pt(L_WRIST))
+      else if (rightOk)       angle = calcAngle(pt(R_SHOULDER), pt(R_ELBOW), pt(R_WRIST))
 
       if (angle > 0) s.smoothed = s.smoothed ? ANGLE_SMOOTH * angle + (1 - ANGLE_SMOOTH) * s.smoothed : angle
       const sa = s.smoothed
@@ -108,8 +121,7 @@ export default function PushUpsPage() {
         if (s.stage === 'down' && s.cooldown === 0) { s.reps++; s.cooldown = 8 }
         s.stage = 'up'
       } else if (sa <= DOWN_THRESHOLD) {
-        s.started = true
-        s.stage = 'down'
+        s.started = true; s.stage = 'down'
       }
 
       if (s.started) {
@@ -122,117 +134,62 @@ export default function PushUpsPage() {
         }
       }
 
-      displayAngle = Math.round(sa)
       const du = new DrawingUtils(ctx)
       ctx.save(); ctx.translate(canvas.width, 0); ctx.scale(-1, 1)
-      du.drawLandmarks(lm, { color: '#00FF00', lineWidth: 2, radius: 4 })
-      du.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#00BFFF', lineWidth: 2 })
+      du.drawLandmarks(lm, { color: '#a78bfa', lineWidth: 2, radius: 4 })
+      du.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#67e8f9', lineWidth: 2 })
       ctx.restore()
     }
 
-    setStats({ reps: s.reps, angle: displayAngle, feedback })
+    setStats({ reps: s.reps, angle: Math.round(s.smoothed), feedback, stage: s.stage })
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
-  const start = useCallback(async () => {
+  const handleStart = useCallback(async () => {
     setErr('')
     await startCamera()
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
-    setStats({ reps: 0, angle: 0, feedback: '' })
+    setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' })
     setRunning(true)
     rafRef.current = requestAnimationFrame(detect)
   }, [startCamera, detect])
 
-  const stop = useCallback(() => { cancelAnimationFrame(rafRef.current); stopCamera(); setRunning(false) }, [stopCamera])
-  const reset = useCallback(() => {
+  const handleStop = useCallback(() => {
+    cancelAnimationFrame(rafRef.current)
+    stopCamera()
+    setRunning(false)
+  }, [stopCamera])
+
+  const handleReset = useCallback(() => {
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
-    setStats({ reps: 0, angle: 0, feedback: '' })
+    setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' })
   }, [])
 
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); stopCamera() }, [stopCamera])
 
-  const instructions = [
-    "Start in a high plank — hands shoulder-width apart",
-    "Keep your body in a straight line from head to heels",
-    "Lower your chest until elbows reach ~90°",
-    "Push back up to full arm extension",
-    "Keep core tight throughout — don't let hips sag",
-    "Breathe in on the way down, out on the way up",
-  ]
-
   return (
-    <div className="space-y-6">
-      <div className="relative">
-        <div className="flex items-center gap-4 mb-4">
-          <Link href="/exercises">
-            <Button variant="ghost" className="text-white hover:bg-white/10"><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
-          </Link>
-        </div>
-        <h1 className="text-4xl font-bold text-white mb-2">Push-ups</h1>
-        <p className="text-neutral-400">Build upper body strength. AI tracks elbow angle and reps — runs in your browser.</p>
-      </div>
-
-      {err && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">{err}</div>}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 bg-black/[0.96] border-white/10 p-4">
-          <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden">
-            {!running && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400 z-20 bg-neutral-900">
-                {!ready ? (<><div className="animate-spin h-8 w-8 mb-4 border-4 border-blue-500 border-t-transparent rounded-full" /><p>Loading pose model…</p></>) : (<><VideoOff className="h-12 w-12 mb-4" /><p>Camera off — click Start to begin</p></>)}
-              </div>
-            )}
-            <video ref={videoRef} autoPlay playsInline muted className="hidden" />
-            <canvas ref={canvasRef} className={`w-full h-full object-cover absolute inset-0 ${running ? 'block' : 'hidden'}`} />
-            {running && (
-              <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm rounded-lg p-3 space-y-1 z-30">
-                <div className="text-white"><span className="text-neutral-400 text-sm">Reps:</span><span className="text-2xl font-bold ml-2">{stats.reps}</span></div>
-                <div className="text-white"><span className="text-neutral-400 text-sm">Elbow:</span><span className="text-lg ml-2">{stats.angle}°</span></div>
-                <div className="text-xs text-neutral-400">Stage: <span className="text-white capitalize">{stateRef.current.stage}</span></div>
-              </div>
-            )}
-            {stats.feedback && (
-              <div className={`absolute bottom-4 left-4 right-4 backdrop-blur-sm rounded-lg p-3 text-white text-center z-30 ${stats.feedback.startsWith('✓') ? 'bg-green-600/80' : 'bg-red-500/80'}`}>
-                {stats.feedback}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center justify-center gap-4 mt-4">
-            {!running ? (
-              <Button onClick={start} disabled={!ready} className="bg-blue-500 hover:bg-blue-600 text-white">
-                <Play className="h-4 w-4 mr-2" />{ready ? 'Start' : 'Loading model…'}
-              </Button>
-            ) : (
-              <Button onClick={stop} className="bg-red-500 hover:bg-red-600 text-white"><Square className="h-4 w-4 mr-2" /> Stop</Button>
-            )}
-            <Button onClick={reset} variant="outline" className="border-white/20 text-white hover:bg-white/10"><RotateCcw className="h-4 w-4 mr-2" /> Reset</Button>
-          </div>
-        </Card>
-
-        <Card className="bg-black/[0.96] border-white/10 p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-lg bg-blue-500/20"><Activity className="h-5 w-5 text-blue-400" /></div>
-            <h2 className="text-lg font-semibold text-white">Instructions</h2>
-          </div>
-          <ol className="space-y-4">
-            {instructions.map((step, i) => (
-              <li key={i} className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-sm text-white font-medium">{i + 1}</span>
-                <span className="text-neutral-300">{step}</span>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-6 pt-6 border-t border-white/10">
-            <h3 className="text-sm font-medium text-white mb-3">Tips</h3>
-            <ul className="space-y-2 text-sm text-neutral-400">
-              <li>• Face camera from the side for best tracking</li>
-              <li>• Good lighting on arms helps accuracy</li>
-              <li>• Target elbow angle: ~90° at bottom</li>
-              <li>• No backend needed — runs in browser</li>
-            </ul>
-          </div>
-        </Card>
-      </div>
-    </div>
+    <ExerciseShell
+      exerciseName="Push-ups"
+      description="Build upper body strength. AI tracks elbow angle and reps — runs entirely in your browser."
+      accentColor="violet"
+      ready={ready}
+      running={running}
+      stats={stats}
+      error={err}
+      instructions={INSTRUCTIONS}
+      tips={TIPS}
+      onStart={handleStart}
+      onStop={handleStop}
+      onReset={handleReset}
+      videoSlot={
+        <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+      }
+      canvasSlot={
+        <canvas
+          ref={canvasRef}
+          className={`w-full h-full object-cover absolute inset-0 ${running ? 'block' : 'hidden'}`}
+        />
+      }
+    />
   )
 }

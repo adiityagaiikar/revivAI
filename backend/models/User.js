@@ -51,6 +51,35 @@ const userSchema = new mongoose.Schema({
   assignedCognitiveGameSlugs: {
     type: [String],
     default: []
+  },
+  // ── Gamification ──────────────────────────────────────────
+  currentStreak: {
+    type: Number,
+    default: 0
+  },
+  longestStreak: {
+    type: Number,
+    default: 0
+  },
+  lastWorkoutDate: {
+    type: Date,
+    default: null
+  },
+  weeklyWorkoutCount: {
+    type: Number,
+    default: 0
+  },
+  weeklyWindowStart: {
+    type: Date,
+    default: null
+  },
+  unlockedThemes: {
+    type: [String],
+    default: ['neon-cyan']
+  },
+  activeTheme: {
+    type: String,
+    default: 'neon-cyan'
   }
 }, {
   timestamps: true
