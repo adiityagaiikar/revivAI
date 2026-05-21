@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import {
   Users, AlertTriangle, TrendingDown, TrendingUp,
   Activity, Clock, CheckCircle2, XCircle,
@@ -39,7 +39,7 @@ const STATS = [
 ───────────────────────────────────────────── */
 function GlassCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md ${className}`}>
+    <div className={`rounded-2xl border border-white/10 bg-white/4 backdrop-blur-md ${className}`}>
       {children}
     </div>
   )
@@ -56,7 +56,7 @@ function AdherenceBadge({ value }: { value: number }) {
   )
 }
 
-const floatUp = {
+const floatUp: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: (i: number) => ({
     opacity: 1, y: 0,
@@ -171,7 +171,7 @@ export default function ProviderDashboardPage() {
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.4 + i * 0.05, type: 'spring', stiffness: 300, damping: 22 }}
-                        className="border-b border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer group"
+                        className="border-b border-white/5 hover:bg-white/3 transition-colors cursor-pointer group"
                       >
                         <td className="px-6 py-3.5">
                           <div className="flex items-center gap-3">

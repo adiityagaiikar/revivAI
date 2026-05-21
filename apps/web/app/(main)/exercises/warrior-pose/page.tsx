@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision'
 import ExerciseShell from '../components/ExerciseShell'
+import { buildAIDebriefPayload } from '@/lib/ai-debrief'
+import { useAIDebrief } from '@/hooks/useAIDebrief'
 
 const L_HIP = 23, L_KNEE = 25, L_ANKLE = 27
 const R_HIP = 24, R_KNEE = 26, R_ANKLE = 28
@@ -11,7 +13,7 @@ const FRONT_KNEE_MAX    = 110
 const BACK_LEG_STRAIGHT = 160
 const HOLD_REP_FRAMES   = 30
 
-type SessionEntry = { timestamp: number; angle: number; holdFrames: number; reps: number }
+type SessionEntry = { timestamp: number; angle: number; holdFrames: number; reps: number; feedback?: string }
 
 function calcAngle(a: number[], b: number[], c: number[]) {
   const ab = [a[0]! - b[0]!, a[1]! - b[1]!]
@@ -52,6 +54,7 @@ export default function WarriorPosePage() {
   const rafRef        = useRef<number>(0)
   const stateRef      = useRef({ reps: 0, holdFrames: 0, started: false })
   const sessionLogRef = useRef<SessionEntry[]>([])
+  const { debriefStatus, debriefText, resetAIDebrief, requestDebrief } = useAIDebrief()
 
   const [ready,   setReady]   = useState(false)
   const [running, setRunning] = useState(false)
@@ -137,7 +140,7 @@ export default function WarriorPosePage() {
       du.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#67e8f9', lineWidth: 2 })
       ctx.restore()
 
-      sessionLogRef.current.push({ timestamp: performance.now(), angle: displayAngle, holdFrames: s.holdFrames, reps: s.reps })
+      sessionLogRef.current.push({ timestamp: performance.now(), angle: displayAngle, holdFrames: s.holdFrames, reps: s.reps, feedback })
     }
 
     setStats({ reps: s.reps, angle: displayAngle, feedback, holdFrames: s.holdFrames })
@@ -145,27 +148,29 @@ export default function WarriorPosePage() {
   }, [])
 
   const handleStart = useCallback(async () => {
-    setErr(''); setSummary(null); sessionLogRef.current = []
+    setErr(''); setSummary(null); sessionLogRef.current = []; resetAIDebrief()
     await startCamera()
     stateRef.current = { reps: 0, holdFrames: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', holdFrames: 0 })
     setRunning(true); rafRef.current = requestAnimationFrame(detect)
-  }, [startCamera, detect])
+  }, [startCamera, detect, resetAIDebrief])
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     cancelAnimationFrame(rafRef.current); stopCamera(); setRunning(false)
     const log = sessionLogRef.current
     localStorage.setItem('warrior-pose-session-log', JSON.stringify(log))
     if (log.length > 0) {
       setSummary({ peakReps: Math.max(...log.map(e => e.reps)), peakHold: Math.max(...log.map(e => e.holdFrames)), total: log.length })
+      await requestDebrief(buildAIDebriefPayload('warrior pose', log, stateRef.current.reps))
     }
     sessionLogRef.current = []
-  }, [stopCamera])
+  }, [stopCamera, requestDebrief])
 
   const handleReset = useCallback(() => {
     stateRef.current = { reps: 0, holdFrames: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', holdFrames: 0 }); setSummary(null)
-  }, [])
+    resetAIDebrief()
+  }, [resetAIDebrief])
 
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); stopCamera() }, [stopCamera])
 
@@ -178,6 +183,8 @@ export default function WarriorPosePage() {
       running={running}
       stats={{ ...stats, holdFrames: stats.holdFrames }}
       error={err}
+      debriefStatus={debriefStatus}
+      debriefText={debriefText}
       summary={summary ? { peakReps: summary.peakReps, peakHold: summary.peakHold, total: summary.total } : undefined}
       instructions={INSTRUCTIONS}
       tips={TIPS}

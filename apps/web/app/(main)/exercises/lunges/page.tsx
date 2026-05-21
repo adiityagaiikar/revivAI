@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision'
 import ExerciseShell from '../components/ExerciseShell'
+import { buildAIDebriefPayload } from '@/lib/ai-debrief'
+import { useAIDebrief } from '@/hooks/useAIDebrief'
 
 const L_HIP = 23, L_KNEE = 25, L_ANKLE = 27
 const UP_THRESHOLD   = 155
@@ -10,7 +12,7 @@ const DOWN_THRESHOLD = 110
 const GOOD_DEPTH_MIN = 80
 const GOOD_DEPTH_MAX = 110
 
-type SessionEntry = { timestamp: number; angle: number; reps: number }
+type SessionEntry = { timestamp: number; angle: number; reps: number; feedback?: string; stage?: string }
 
 function calcAngle(a: number[], b: number[], c: number[]) {
   const ab = [a[0]! - b[0]!, a[1]! - b[1]!]
@@ -51,6 +53,7 @@ export default function LungesPage() {
   const rafRef        = useRef<number>(0)
   const stateRef      = useRef<{ stage: 'up' | 'down' | null; reps: number; started: boolean }>({ stage: null, reps: 0, started: false })
   const sessionLogRef = useRef<SessionEntry[]>([])
+  const { debriefStatus, debriefText, resetAIDebrief, requestDebrief } = useAIDebrief()
 
   const [ready,   setReady]   = useState(false)
   const [running, setRunning] = useState(false)
@@ -134,7 +137,7 @@ export default function LungesPage() {
       du.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#67e8f9', lineWidth: 2 })
       ctx.restore()
 
-      sessionLogRef.current.push({ timestamp: performance.now(), angle: displayAngle, reps: s.reps })
+      sessionLogRef.current.push({ timestamp: performance.now(), angle: displayAngle, reps: s.reps, feedback, stage: s.stage ?? 'up' })
     }
 
     setStats({ reps: s.reps, angle: displayAngle, feedback, stage: s.stage ?? '' })
@@ -142,27 +145,29 @@ export default function LungesPage() {
   }, [])
 
   const handleStart = useCallback(async () => {
-    setErr(''); setSummary(null); sessionLogRef.current = []
+    setErr(''); setSummary(null); sessionLogRef.current = []; resetAIDebrief()
     await startCamera()
     stateRef.current = { stage: null, reps: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', stage: '' })
     setRunning(true); rafRef.current = requestAnimationFrame(detect)
-  }, [startCamera, detect])
+  }, [startCamera, detect, resetAIDebrief])
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     cancelAnimationFrame(rafRef.current); stopCamera(); setRunning(false)
     const log = sessionLogRef.current
     localStorage.setItem('lunges-session-log', JSON.stringify(log))
     if (log.length > 0) {
       setSummary({ peakReps: Math.max(...log.map(e => e.reps)), minAngle: Math.min(...log.map(e => e.angle)), total: log.length })
+      await requestDebrief(buildAIDebriefPayload('lunges', log, stateRef.current.reps))
     }
     sessionLogRef.current = []
-  }, [stopCamera])
+  }, [stopCamera, requestDebrief])
 
   const handleReset = useCallback(() => {
     stateRef.current = { stage: null, reps: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', stage: '' }); setSummary(null)
-  }, [])
+    resetAIDebrief()
+  }, [resetAIDebrief])
 
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); stopCamera() }, [stopCamera])
 
@@ -175,6 +180,8 @@ export default function LungesPage() {
       running={running}
       stats={stats}
       error={err}
+      debriefStatus={debriefStatus}
+      debriefText={debriefText}
       summary={summary ?? undefined}
       instructions={INSTRUCTIONS}
       tips={TIPS}

@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import {
   Check, Zap, Shield, Building2, ArrowRight,
   Sparkles, Lock, Infinity,
@@ -105,7 +105,7 @@ const FAQS = [
 /* ─────────────────────────────────────────────
    Primitives
 ───────────────────────────────────────────── */
-const floatUp = {
+const floatUp: Variants = {
   hidden: { opacity: 0, y: 28 },
   visible: (i: number) => ({
     opacity: 1, y: 0,
@@ -201,7 +201,7 @@ export default function PricingPage() {
               )}
 
               <div
-                className={`rounded-2xl border ${tier.borderClass} bg-white/[0.04] backdrop-blur-md p-7 flex flex-col gap-6 h-full`}
+                className={`rounded-2xl border ${tier.borderClass} bg-white/4 backdrop-blur-md p-7 flex flex-col gap-6 h-full`}
                 style={tier.glowStyle}
               >
                 {/* Icon + name */}
@@ -303,7 +303,7 @@ export default function PricingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ type: 'spring', stiffness: 300, damping: 22, delay: i * 0.07 }}
-              className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-5"
+              className="rounded-2xl border border-white/10 bg-white/4 backdrop-blur-md p-5"
             >
               <h3 className="text-sm font-semibold text-white mb-2">{faq.q}</h3>
               <p className="text-sm text-white/45 leading-relaxed">{faq.a}</p>
@@ -317,7 +317,7 @@ export default function PricingPage() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-          className="text-center rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-12 relative overflow-hidden"
+          className="text-center rounded-3xl border border-white/10 bg-white/3 backdrop-blur-md p-12 relative overflow-hidden"
         >
           <div
             className="pointer-events-none absolute inset-0"

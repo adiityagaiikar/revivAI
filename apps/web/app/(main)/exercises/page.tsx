@@ -4,7 +4,7 @@ import { Clock, Flame, Play, Search, Zap, ImageOff } from 'lucide-react'
 import { Input } from '@workspace/ui/components/input'
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import { ALL_EXERCISES, filterExercisesByPlan, type PatientPlan, type ExerciseItem } from '@/lib/activity-catalog'
 import { usePatientPlan } from '@/hooks/usePatientPlan'
 
@@ -30,7 +30,7 @@ const CATEGORIES = ['All', 'Strength', 'Cardio', 'Core', 'Flexibility']
 /* ─────────────────────────────────────────────
    Stagger animation variants
 ───────────────────────────────────────────── */
-const cardVariants = {
+const cardVariants: Variants = {
   hidden:  { opacity: 0, y: 24 },
   visible: (i: number) => ({
     opacity: 1,
@@ -47,7 +47,7 @@ function ExerciseGif({ src, alt }: { src: string; alt: string }) {
 
   if (errored) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-white/[0.02]">
+      <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-white/2">
         <ImageOff className="h-8 w-8 text-white/15" />
         <span className="text-[10px] text-white/20 font-medium tracking-wide">GIF coming soon</span>
       </div>
@@ -78,7 +78,7 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
       variants={cardVariants}
       initial="hidden"
       animate="visible"
-      className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden hover:bg-white/[0.04] hover:border-white/20 transition-colors duration-300 flex flex-col group"
+      className="bg-white/2 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/4 hover:border-white/20 transition-colors duration-300 flex flex-col group"
     >
       {/* ── GIF preview ── */}
       <div className="w-full relative overflow-hidden bg-black/50 aspect-video">
@@ -143,7 +143,7 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
             </button>
           </Link>
         ) : (
-          <div className="w-full py-3 mt-1 rounded-xl bg-white/[0.02] border border-white/8 text-white/25 flex items-center justify-center gap-2 text-sm cursor-not-allowed">
+          <div className="w-full py-3 mt-1 rounded-xl bg-white/2 border border-white/8 text-white/25 flex items-center justify-center gap-2 text-sm cursor-not-allowed">
             In-person / guided only
           </div>
         )}
@@ -157,7 +157,7 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
 ───────────────────────────────────────────── */
 function SkeletonCard() {
   return (
-    <div className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden flex flex-col">
+    <div className="bg-white/2 border border-white/10 rounded-2xl overflow-hidden flex flex-col">
       {/* GIF area */}
       <div className="w-full aspect-video bg-white/5 animate-pulse" />
       {/* Body */}
@@ -249,7 +249,7 @@ export default function ExercisesPage() {
         </div>
       ) : !planLoading && plan?.enabled && filteredExercises.length === 0 ? (
         /* Empty state — doctor plan active but nothing assigned */
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-12 text-center">
+        <div className="rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-12 text-center">
           <div className="h-12 w-12 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center mx-auto mb-4">
             <Search className="h-6 w-6 text-white/25" />
           </div>
@@ -258,7 +258,7 @@ export default function ExercisesPage() {
         </div>
       ) : filteredExercises.length === 0 ? (
         /* Empty state — search returned nothing */
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-12 text-center">
+        <div className="rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-12 text-center">
           <p className="text-white/60 font-medium mb-1">No exercises match &ldquo;{searchTerm}&rdquo;</p>
           <button
             onClick={() => { setSearchTerm(''); setSelectedCategory('All') }}

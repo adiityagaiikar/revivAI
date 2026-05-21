@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision'
 import ExerciseShell from '../components/ExerciseShell'
+import { buildAIDebriefPayload } from '@/lib/ai-debrief'
+import { useAIDebrief } from '@/hooks/useAIDebrief'
 
 /* ── Landmark indices ── */
 const L_SHOULDER = 11, L_ELBOW = 13, L_WRIST = 15
@@ -45,6 +47,8 @@ export default function PushUpsPage() {
   const landmarkerRef = useRef<PoseLandmarker | null>(null)
   const rafRef        = useRef<number>(0)
   const stateRef      = useRef({ stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false })
+  const sessionLogRef = useRef<Array<{ timestamp: number; angle: number; reps: number; feedback: string; stage: string }>>([])
+  const { debriefStatus, debriefText, resetAIDebrief, requestDebrief } = useAIDebrief()
 
   const [ready,   setReady]   = useState(false)
   const [running, setRunning] = useState(false)
@@ -142,28 +146,43 @@ export default function PushUpsPage() {
     }
 
     setStats({ reps: s.reps, angle: Math.round(s.smoothed), feedback, stage: s.stage })
+    sessionLogRef.current.push({
+      timestamp: performance.now(),
+      angle: Math.round(s.smoothed),
+      reps: s.reps,
+      feedback,
+      stage: s.stage,
+    })
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
   const handleStart = useCallback(async () => {
     setErr('')
+    resetAIDebrief()
+    sessionLogRef.current = []
     await startCamera()
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' })
     setRunning(true)
     rafRef.current = requestAnimationFrame(detect)
-  }, [startCamera, detect])
+  }, [startCamera, detect, resetAIDebrief])
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     cancelAnimationFrame(rafRef.current)
     stopCamera()
     setRunning(false)
-  }, [stopCamera])
+    const log = sessionLogRef.current
+    if (log.length > 0) {
+      await requestDebrief(buildAIDebriefPayload('push-ups', log, stateRef.current.reps))
+    }
+    sessionLogRef.current = []
+  }, [requestDebrief, stopCamera])
 
   const handleReset = useCallback(() => {
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' })
-  }, [])
+    resetAIDebrief()
+  }, [resetAIDebrief])
 
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); stopCamera() }, [stopCamera])
 
@@ -176,6 +195,8 @@ export default function PushUpsPage() {
       running={running}
       stats={stats}
       error={err}
+      debriefStatus={debriefStatus}
+      debriefText={debriefText}
       instructions={INSTRUCTIONS}
       tips={TIPS}
       onStart={handleStart}

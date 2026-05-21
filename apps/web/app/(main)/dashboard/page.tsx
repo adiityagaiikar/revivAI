@@ -43,15 +43,17 @@ const ICONS: Record<string, React.ElementType> = { Activity, Flame, Timer, Troph
    Glassmorphism card primitive
 ───────────────────────────────────────────── */
 function GlassCard({
-  children, className = '', glow = false,
-}: { children: React.ReactNode; className?: string; glow?: boolean }) {
+  children, className = '', glow = false, style,
+}: { children: React.ReactNode; className?: string; glow?: boolean; style?: React.CSSProperties }) {
+  const glowStyle = glow ? {
+    boxShadow: '0 0 40px rgba(6,182,212,0.12), inset 0 0 40px rgba(6,182,212,0.04)',
+    borderColor: 'rgba(6,182,212,0.25)',
+  } : {}
+
   return (
     <div
-      className={`rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md relative overflow-hidden ${className}`}
-      style={glow ? {
-        boxShadow: '0 0 40px rgba(6,182,212,0.12), inset 0 0 40px rgba(6,182,212,0.04)',
-        borderColor: 'rgba(6,182,212,0.25)',
-      } : {}}
+      className={`rounded-2xl border border-white/10 bg-white/4 backdrop-blur-md relative overflow-hidden ${className}`}
+      style={{ ...style, ...glowStyle }}
     >
       {children}
     </div>
@@ -451,8 +453,8 @@ export default function DashboardPage() {
               <p className="text-white/30 text-sm col-span-3">No doctors assigned yet.</p>
             ) : (
               doctors.map((doctor, i) => (
-                <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
-                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
+                <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 transition-colors">
+                  <div className="h-10 w-10 rounded-full bg-linear-to-br from-cyan-500 to-violet-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
                     {doctor.name?.charAt(0) ?? 'D'}
                   </div>
                   <div className="min-w-0">

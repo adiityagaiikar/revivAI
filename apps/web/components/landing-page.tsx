@@ -5,13 +5,13 @@ import { Button } from "@workspace/ui/components/button"
 import { LogIn, UserPlus, Scan, Brain, ShieldCheck, ChevronRight, Camera, Dumbbell, BarChart3, Star, ArrowRight, Zap } from "lucide-react"
 import Link from "next/link"
 import { useRef, useCallback, useState } from "react"
-import { motion, useInView } from "framer-motion"
+import { motion, useInView, type Variants } from "framer-motion"
 import { GuestTrial } from "@/components/guest-trial"
 
 /* ─────────────────────────────────────────────
    Shared animation variants
 ───────────────────────────────────────────── */
-const floatUp = {
+const floatUp: Variants = {
   hidden: { opacity: 0, y: 40 },
   visible: {
     opacity: 1,
@@ -20,7 +20,7 @@ const floatUp = {
   },
 }
 
-const stagger = {
+const stagger: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.12 } },
 }
@@ -217,7 +217,7 @@ export function LandingPage() {
           ref={cardRef}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
-          className="w-full relative rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-sm overflow-hidden"
+          className="w-full relative rounded-3xl border border-white/10 bg-white/3 backdrop-blur-sm overflow-hidden"
           style={{ minHeight: 560 }}
         >
           {/* cursor blob */}
@@ -381,7 +381,7 @@ export function LandingPage() {
                 <GlassCard className="p-7 h-full flex flex-col gap-5 group hover:border-white/20 transition-colors duration-300 relative overflow-hidden">
                   {/* accent gradient */}
                   <div
-                    className={`absolute inset-0 bg-gradient-to-br ${f.accent} opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none`}
+                    className={`absolute inset-0 bg-linear-to-br ${f.accent} opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none`}
                   />
                   <div className="relative z-10 flex flex-col gap-5 h-full">
                     <div className="flex items-start justify-between">
@@ -496,7 +496,7 @@ export function LandingPage() {
                   </div>
                   <p className="text-sm text-white/65 leading-relaxed flex-1">&ldquo;{t.quote}&rdquo;</p>
                   <div className="flex items-center gap-3 pt-2 border-t border-white/8">
-                    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xs font-bold text-white">
+                    <div className="h-9 w-9 rounded-full bg-linear-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xs font-bold text-white">
                       {t.name.charAt(0)}
                     </div>
                     <div>

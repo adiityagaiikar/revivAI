@@ -7,6 +7,8 @@ import { motion } from 'framer-motion'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { ElevenLabsVoiceChat } from '@/components/elevenlabs-voice-chat'
 import ExerciseShell from '../components/ExerciseShell'
+import { buildAIDebriefPayload } from '@/lib/ai-debrief'
+import { useAIDebrief } from '@/hooks/useAIDebrief'
 
 const AGENT_ID = 'agent_5201kndzmwmmew99xsex4237d84t'
 
@@ -19,7 +21,7 @@ const GOOD_DEPTH_MAX = 110
 const ANGLE_SMOOTH   = 0.40
 const MIN_VIS        = 0.45
 
-type SessionEntry = { timestamp: number; wallTime: number; angle: number; reps: number }
+type SessionEntry = { timestamp: number; wallTime: number; angle: number; reps: number; feedback?: string; stage?: string }
 type SessionAvg   = { session: number; avgAngle: number; totalReps: number; date: string }
 
 function calcAngle(a: number[], b: number[], c: number[]) {
@@ -62,6 +64,7 @@ export default function SquatsPage() {
   const stateRef      = useRef({ stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false })
   const sessionLogRef = useRef<SessionEntry[]>([])
   const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { debriefStatus, debriefText, resetAIDebrief, requestDebrief } = useAIDebrief()
 
   const [ready,         setReady]         = useState(false)
   const [running,       setRunning]       = useState(false)
@@ -152,7 +155,6 @@ export default function SquatsPage() {
         setScorePopup('+1 rep')
         if (popupTimerRef.current) clearTimeout(popupTimerRef.current)
         popupTimerRef.current = setTimeout(() => setScorePopup(null), 1200)
-        sessionLogRef.current.push({ timestamp: performance.now(), wallTime: Date.now(), angle: Math.round(sa), reps: s.reps })
       }
 
       if (s.started) {
@@ -170,19 +172,28 @@ export default function SquatsPage() {
       ctx.restore()
     }
 
-    setStats({ reps: s.reps, angle: Math.round(s.smoothed / 20) * 20, feedback, stage: s.stage })
+    const displayAngle = Math.round(s.smoothed / 20) * 20
+    setStats({ reps: s.reps, angle: displayAngle, feedback, stage: s.stage })
+    sessionLogRef.current.push({
+      timestamp: performance.now(),
+      wallTime: Date.now(),
+      angle: displayAngle,
+      reps: s.reps,
+      feedback,
+      stage: s.stage,
+    })
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
   const handleStart = useCallback(async () => {
-    setErr(''); setSummary(null); sessionLogRef.current = []
+    setErr(''); setSummary(null); sessionLogRef.current = []; resetAIDebrief()
     await startCamera()
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' })
     setRunning(true); rafRef.current = requestAnimationFrame(detect)
-  }, [startCamera, detect])
+  }, [startCamera, detect, resetAIDebrief])
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     cancelAnimationFrame(rafRef.current)
     if (popupTimerRef.current) clearTimeout(popupTimerRef.current)
     setScorePopup(null)
@@ -199,15 +210,17 @@ export default function SquatsPage() {
         localStorage.setItem('squats-session-history', JSON.stringify(next))
         return next
       })
+      await requestDebrief(buildAIDebriefPayload('squats', log, peakReps))
     }
     sessionLogRef.current = []
-  }, [stopCamera])
+  }, [stopCamera, requestDebrief])
 
   const handleReset = useCallback(() => {
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' }); setSummary(null)
     if (popupTimerRef.current) clearTimeout(popupTimerRef.current); setScorePopup(null)
-  }, [])
+    resetAIDebrief()
+  }, [resetAIDebrief])
 
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); stopCamera() }, [stopCamera])
 
@@ -221,6 +234,8 @@ export default function SquatsPage() {
         running={running}
         stats={stats}
         error={err}
+        debriefStatus={debriefStatus}
+        debriefText={debriefText}
         summary={summary ?? undefined}
         scorePopup={scorePopup ?? undefined}
         instructions={INSTRUCTIONS}
@@ -253,7 +268,7 @@ export default function SquatsPage() {
 
       {/* Session history chart */}
       {sessionHistory.length > 0 && (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-6 mt-6">
+        <div className="rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-6 mt-6">
           <h3 className="text-white font-semibold mb-1 text-sm">Session History</h3>
           <p className="text-xs text-white/35 mb-4">Average angle and peak reps across all sessions</p>
           <ResponsiveContainer width="100%" height={240}>

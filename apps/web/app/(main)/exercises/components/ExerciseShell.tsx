@@ -13,7 +13,7 @@
  *  - Optional score popup (rep flash)
  */
 
-import { useRef, useCallback, ReactNode } from 'react'
+import { useRef, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Square, RotateCcw, ArrowLeft,
@@ -56,6 +56,8 @@ export interface ExerciseShellProps {
   error?:   string
   summary?: SessionSummary | null
   scorePopup?: string | null
+  debriefStatus?: 'idle' | 'loading' | 'ready'
+  debriefText?: string
 
   /* content */
   instructions: string[]
@@ -90,11 +92,13 @@ const ACCENT = {
 ───────────────────────────────────────────── */
 function SpringBtn({
   onClick, disabled = false, children, className = '',
+  style,
 }: {
   onClick: () => void
   disabled?: boolean
   children: ReactNode
   className?: string
+  style?: CSSProperties
 }) {
   return (
     <motion.button
@@ -103,6 +107,7 @@ function SpringBtn({
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       onClick={onClick}
       disabled={disabled}
+      style={style}
       className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
     >
       {children}
@@ -115,7 +120,7 @@ function SpringBtn({
 ───────────────────────────────────────────── */
 export default function ExerciseShell({
   exerciseName, description, accentColor = 'violet',
-  ready, running, stats, error, summary, scorePopup,
+  ready, running, stats, error, summary, scorePopup, debriefStatus = 'idle', debriefText,
   instructions, tips, demoGif, extraStats,
   onStart, onStop, onReset, onDownload,
   videoSlot, canvasSlot, extraControls,
@@ -162,7 +167,7 @@ export default function ExerciseShell({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* ══ Video card ══ */}
-        <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-4 space-y-4">
+        <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-4 space-y-4">
 
           {/* Video container */}
           <div className="relative aspect-video rounded-xl overflow-hidden bg-black">
@@ -308,6 +313,42 @@ export default function ExerciseShell({
             </AnimatePresence>
           </div>
 
+          {/* ── AI debrief ── */}
+          <AnimatePresence>
+            {debriefStatus !== 'idle' && (
+              <motion.div
+                key="ai-debrief"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+                className={`rounded-2xl border backdrop-blur-md p-6 ${
+                  debriefStatus === 'ready'
+                    ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_32px_rgba(6,182,212,0.12)]'
+                    : 'border-white/10 bg-white/5'
+                }`}
+              >
+                {debriefStatus === 'loading' ? (
+                  <div className="flex items-center gap-3 text-white/70">
+                    <div className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-pulse" />
+                    <p className="text-sm font-medium tracking-wide animate-pulse">
+                      AI Coach is analyzing your biomechanics...
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-400/80">
+                      Biomechanical LLM Debrief
+                    </p>
+                    <p className="text-sm leading-6 text-white/75">
+                      {debriefText || 'Your AI coaching summary is ready.'}
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* ── Control bar ── */}
           <div className="flex items-center justify-center gap-3 flex-wrap">
             {!running ? (
@@ -350,7 +391,7 @@ export default function ExerciseShell({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                className="rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-5"
+                className="rounded-xl border border-white/10 bg-white/3 backdrop-blur-md p-5"
               >
                 <div className="flex items-center gap-2 mb-4">
                   <Zap className={`h-4 w-4 ${ac.icon}`} />
@@ -393,7 +434,7 @@ export default function ExerciseShell({
         </div>
 
         {/* ══ Instructions panel ══ */}
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-6 flex flex-col gap-5">
+        <div className="rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-6 flex flex-col gap-5">
           <div className="flex items-center gap-3">
             <div className={`p-2.5 rounded-xl border ${ac.border} ${ac.bg}`}>
               <Activity className={`h-4 w-4 ${ac.icon}`} />
@@ -421,7 +462,7 @@ export default function ExerciseShell({
                 transition={{ delay: i * 0.05, type: 'spring', stiffness: 300, damping: 20 }}
                 className="flex gap-3"
               >
-                <span className={`flex-shrink-0 w-5 h-5 rounded-full border ${ac.border} ${ac.bg} flex items-center justify-center text-[10px] font-bold ${ac.icon}`}>
+                <span className={`shrink-0 w-5 h-5 rounded-full border ${ac.border} ${ac.bg} flex items-center justify-center text-[10px] font-bold ${ac.icon}`}>
                   {i + 1}
                 </span>
                 <span className="text-white/60 text-sm leading-relaxed">{step}</span>
