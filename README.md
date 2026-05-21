@@ -1,6 +1,8 @@
 # revivAl
 
-revivAl is a monorepo containing a Next.js frontend (`apps/web`) and a Node.js/Express backend (`backend`) for a rehabilitation / cognitive health application.
+revivAl is a rehabilitation and cognitive care platform for patients, clinicians, and caregivers. It combines a Next.js web app with a Node.js/Express backend to support guided exercises, cognitive training, care-team coordination, medical history upload and extraction, and progress tracking in one workspace.
+
+The frontend lives in [apps/web/package.json](apps/web/package.json#L1-L40) and the backend lives in [backend/package.json](backend/package.json#L1-L20). The repository is organized as a monorepo so both applications can be installed, developed, and built from the project root.
 
 **Contents**
 - Frontend: [apps/web/package.json](apps/web/package.json#L1-L40) (Next.js)
@@ -38,16 +40,17 @@ The project needs the following environment variables at minimum:
 
 An example file is provided as `.env.example` in the repo root.
 
-## Running (development)
-From the repository root you can start the entire monorepo dev environment with turborepo:
+## Running the app
+### Development
+Start the full app from the repository root:
 
 ```bash
 npm run dev
 ```
 
-This runs `turbo dev` which will start the `apps/web` dev server (`next dev`) and other packages that expose a `dev` script. By default the frontend is available at `http://localhost:3000` and the backend at `http://localhost:5000` (unless you changed `PORT`).
+This runs `turbo dev`, which starts every package that exposes a `dev` script. In this repo that means the frontend Next.js app and the backend API together. By default the frontend is available at `http://localhost:3000` and the backend at `http://localhost:5000` unless you change `PORT`.
 
-If you prefer to run services individually:
+If you want to run the services separately:
 
 - Start the backend with automatic reload (requires `nodemon`):
 
@@ -55,33 +58,33 @@ If you prefer to run services individually:
 npm --prefix backend run dev
 ```
 
-- Start the frontend (from `apps/web`):
+- Start the frontend:
 
 ```bash
-cd apps/web
-npm install
-npm run dev
+npm --prefix apps/web run dev
+```
+
+### Production
+Build the entire monorepo from the root:
+
+```bash
+npm run build
+```
+
+Then start each service with its production command:
+
+```bash
+npm --prefix backend start
+npm --prefix apps/web start
 ```
 
 ## Health check
-- Backend exposes a health endpoint: `GET /api/health` (e.g. `http://localhost:5000/api/health`).
+- Backend exposes a health endpoint: `GET /api/health` (for example, `http://localhost:5000/api/health`).
 
 ## Notes & troubleshooting
 - Ensure MongoDB is reachable by the `MONGODB_URI` you provide.
 - If you see auth or token errors, confirm `JWT_SECRET` is set in `.env`.
 - The frontend reads `NEXT_PUBLIC_API_URL` for API calls (defaults to `http://localhost:5000/api`). See [apps/web/lib/api.ts](apps/web/lib/api.ts#L1-L5).
 
-## Building for production
-- Build all packages:
-
-```bash
-npm run build
-```
-
-Then run the production backend and serve the frontend according to your deployment strategy.
-
 ## Contributing
 - Fork, make changes in feature branches, and open pull requests against the main branch.
-
----
-If you want, I can start the dev servers now and stream the terminal output here. Which would you prefer: start the full monorepo (`npm run dev`) or start the backend and frontend individually?

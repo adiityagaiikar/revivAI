@@ -8,7 +8,7 @@ import {
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
@@ -147,7 +147,7 @@ export default function DashboardPage() {
   }, [router])
 
   /* ── Stagger variants ── */
-  const cardVariants = {
+  const cardVariants: Variants = {
     hidden: { opacity: 0, y: 24 },
     visible: (i: number) => ({
       opacity: 1, y: 0,
