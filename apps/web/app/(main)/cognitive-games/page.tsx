@@ -1,6 +1,7 @@
 'use client'
 
 import { Card } from "@workspace/ui/components/card"
+import { GlassCard } from "@/components/GlassCard"
 import { Spotlight } from "@workspace/ui/components/spotlight"
 import { Brain, Gamepad2, Target, Zap, Play, Trophy, ChevronDown } from "lucide-react"
 import Link from "next/link"
@@ -138,38 +139,42 @@ export default function CognitiveGamesPage() {
             visibleGames.map((game) => {
               const Icon = ICONS[game.iconName] || Brain
               return (
-                <Card
-                  key={game.slug}
-                  className="bg-black/[0.96] border-white/10 p-6 hover:border-white/20 transition-all flex flex-col h-full cursor-pointer group"
-                >
-                  <div className="p-4 rounded-lg bg-white/5 w-fit mb-4 text-purple-400">
-                    <Icon className="h-8 w-8" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-2">{game.name}</h3>
-                  <p className="text-neutral-400 text-sm mb-4">{game.description}</p>
-                  
-                  <div className="flex items-center gap-2 mb-6">
-                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-neutral-300">
-                      {game.category}
-                    </span>
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      game.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
-                      game.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-red-500/20 text-red-400'
-                    }`}>
-                      {game.difficulty}
-                    </span>
-                  </div>
-
-                  <div className="mt-auto pt-6 border-t border-white/10">
-                    <Link href={`/cognitive-games/${game.slug}`} className="block">
-                      <button type="button" className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-white text-black hover:bg-white/90 transition-all font-semibold opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0">
-                        <Play className="h-4 w-4" />
-                        Play Game
-                      </button>
-                    </Link>
-                  </div>
-                </Card>
+                <Link key={game.slug} href={`/cognitive-games/${game.slug}`} className="block h-full">
+                  <GlassCard className="p-6 flex flex-col h-full hover:border-cyan-500/30 transition-colors group">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="p-3 rounded-xl border border-white/10 bg-white/[0.02]">
+                        <Icon className="w-6 h-6 text-purple-400" />
+                      </div>
+                    </div>
+                    
+                    <h3 className="text-xl font-bold text-white mb-2">{game.name}</h3>
+                    <p className="text-white/60 text-sm leading-relaxed mb-6 flex-grow">
+                      {game.description}
+                    </p>
+                    
+                    <div className="flex flex-col mt-auto">
+                      <div className="flex gap-2 mb-6">
+                        <span className="px-3 py-1 rounded-full text-xs font-medium border border-white/10 bg-white/[0.02] text-white/70">
+                          {game.category}
+                        </span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          game.difficulty === 'Easy' ? 'border-green-500/20 bg-green-500/10 text-green-400' :
+                          game.difficulty === 'Medium' ? 'border-yellow-500/20 bg-yellow-500/10 text-yellow-400' :
+                          'border-red-500/20 bg-red-500/10 text-red-400'
+                        } border`}>
+                          {game.difficulty}
+                        </span>
+                      </div>
+                      
+                      <div className="pt-4 border-t border-white/10">
+                        <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/5 transition-colors text-white/80 hover:text-white">
+                          <Play className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+                          Play Game
+                        </button>
+                      </div>
+                    </div>
+                  </GlassCard>
+                </Link>
               )
             })
           )}

@@ -69,10 +69,15 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
       className="bg-white/2 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/4 hover:border-white/20 transition-colors duration-300 flex flex-col group"
     >
       {/* ── Thumbnail preview ── */}
-      <div className="w-full relative overflow-hidden bg-black/50 h-48">
-        <ExerciseGif src={exercise.thumbnailUrl} alt={`${exercise.name} demonstration`} />
+      <div className="relative w-full h-48 overflow-hidden rounded-t-xl">
+        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent z-[1]" />
+        <img
+          src={exercise.thumbnailUrl}
+          alt={exercise.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-70 grayscale-[50%]"
+        />
 
-        {/* Floating badges — top-right of GIF */}
+        {/* Floating badges — top-right of image */}
         <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5 z-10">
           {exercise.hasAI && (
             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-cyan-500/30 bg-black/60 backdrop-blur-md text-[10px] font-bold text-cyan-400 tracking-wide">
@@ -85,7 +90,7 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
           </span>
         </div>
 
-        {/* Category chip — bottom-left of GIF */}
+        {/* Category chip — bottom-left of image */}
         <div className="absolute bottom-2.5 left-2.5 z-10">
           <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-semibold backdrop-blur-md bg-black/60 ${accent.text} ${accent.border}`}>
             {exercise.category}
