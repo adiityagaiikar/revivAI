@@ -9,6 +9,7 @@ import { ElevenLabsVoiceChat } from '@/components/elevenlabs-voice-chat'
 import ExerciseShell from '../components/ExerciseShell'
 import { buildAIDebriefPayload } from '@/lib/ai-debrief'
 import { useAIDebrief } from '@/hooks/useAIDebrief'
+import { calculateFormScore } from '@/lib/scoring'
 
 const AGENT_ID = 'agent_5201kndzmwmmew99xsex4237d84t'
 
@@ -65,6 +66,9 @@ export default function SquatsPage() {
   const sessionLogRef = useRef<SessionEntry[]>([])
   const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { debriefStatus, debriefText, resetAIDebrief, requestDebrief } = useAIDebrief()
+
+  const [ghostLandmarks, setGhostLandmarks] = useState<any>(null)
+  const ghostLandmarksRef = useRef<any>(null)
 
   const [ready,         setReady]         = useState(false)
   const [running,       setRunning]       = useState(false)
@@ -165,8 +169,23 @@ export default function SquatsPage() {
         }
       }
 
+      const currentDisplayAngle = Math.round(sa / 20) * 20
+      const score = calculateFormScore(currentDisplayAngle, 'Squats')
+      if (score === 100 && !ghostLandmarksRef.current && s.started) {
+        ghostLandmarksRef.current = lm
+        setGhostLandmarks(lm)
+      }
+
       const du = new DrawingUtils(ctx)
       ctx.save(); ctx.translate(canvas.width, 0); ctx.scale(-1, 1)
+
+      if (ghostLandmarksRef.current) {
+        ctx.setLineDash([5, 5])
+        du.drawLandmarks(ghostLandmarksRef.current, { color: 'rgba(255,255,255,0.2)', lineWidth: 2, radius: 2 })
+        du.drawConnectors(ghostLandmarksRef.current, PoseLandmarker.POSE_CONNECTIONS, { color: 'rgba(255,255,255,0.2)', lineWidth: 2 })
+        ctx.setLineDash([])
+      }
+
       du.drawLandmarks(lm, { color: '#a78bfa', lineWidth: 2, radius: 4 })
       du.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#67e8f9', lineWidth: 2 })
       ctx.restore()
@@ -219,6 +238,7 @@ export default function SquatsPage() {
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
     setStats({ reps: 0, angle: 0, feedback: '', stage: 'up' }); setSummary(null)
     if (popupTimerRef.current) clearTimeout(popupTimerRef.current); setScorePopup(null)
+    ghostLandmarksRef.current = null; setGhostLandmarks(null)
     resetAIDebrief()
   }, [resetAIDebrief])
 

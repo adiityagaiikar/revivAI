@@ -13,7 +13,9 @@
  *  - Optional score popup (rep flash)
  */
 
-import { useRef, useCallback, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useCallback, useState, useEffect, type CSSProperties, type ReactNode } from 'react'
+import { calculateFormScore, getScoreColor } from '@/lib/scoring'
+import { ALL_EXERCISES } from '@/lib/activity-catalog'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Square, RotateCcw, ArrowLeft,
@@ -126,7 +128,35 @@ export default function ExerciseShell({
   videoSlot, canvasSlot, extraControls,
 }: ExerciseShellProps) {
   const ac = ACCENT[accentColor]
+  
   const isGoodFeedback = stats.feedback.startsWith('✓')
+
+  // Form Score calculation
+  const formScore = calculateFormScore(stats.angle, exerciseName);
+  const scoreColor = getScoreColor(formScore);
+
+  // Auto-resolve GIF from catalog
+  const catalogMatch = ALL_EXERCISES.find(e => e.name === exerciseName)
+  const resolvedDemoGif = demoGif || catalogMatch?.gifUrl
+
+  // Perfect Rep Flare logic
+  const [perfectRepFlare, setPerfectRepFlare] = useState(false);
+  const lastRepRef = useRef(stats.reps);
+  const perfectTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (stats.reps !== lastRepRef.current) {
+      lastRepRef.current = stats.reps;
+      perfectTriggeredRef.current = false;
+    }
+
+    if (running && formScore === 100 && !perfectTriggeredRef.current) {
+      perfectTriggeredRef.current = true;
+      setPerfectRepFlare(true);
+      setTimeout(() => setPerfectRepFlare(false), 800);
+    }
+  }, [formScore, stats.reps, running]);
+
 
   return (
     <div className="space-y-6" style={{ fontFamily: "var(--font-sans, 'Inter', sans-serif)" }}>
@@ -250,7 +280,33 @@ export default function ExerciseShell({
               )}
             </AnimatePresence>
 
-            {/* ── Live badge (top-right) ── */}
+            
+            {/* ── Form Score Bar (right side) ── */}
+            <AnimatePresence>
+              {running && (
+                <motion.div
+                  key="form-score"
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 12 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                  className="absolute top-4 right-4 bottom-4 w-12 z-30 flex flex-col items-center justify-end rounded-full border border-white/10 bg-black/40 backdrop-blur-md overflow-hidden py-4"
+                >
+                  <span className="text-white/60 text-[8px] font-bold tracking-widest absolute top-4">SCORE</span>
+                  <div className="w-2 bg-white/10 rounded-full flex-1 mx-auto my-6 relative overflow-hidden flex flex-col justify-end">
+                    <motion.div 
+                      className="w-full rounded-full transition-colors duration-300"
+                      animate={{ height: `${formScore}%`, backgroundColor: scoreColor }}
+                      transition={{ type: 'spring', stiffness: 100, damping: 15 }}
+                    />
+                  </div>
+                  <span className="text-white font-bold text-sm" style={{ color: scoreColor }}>{formScore}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ── Live badge (top-right, shifted left) ── */}
+
             <AnimatePresence>
               {running && (
                 <motion.div
@@ -258,7 +314,7 @@ export default function ExerciseShell({
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
-                  className="absolute top-4 right-4 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/15 backdrop-blur-md"
+                  className="absolute top-4 right-20 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/15 backdrop-blur-md"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
                   <span className="text-[10px] font-bold text-red-300 tracking-widest">LIVE</span>
@@ -443,10 +499,10 @@ export default function ExerciseShell({
           </div>
 
           {/* Optional demo GIF */}
-          {demoGif && (
+          {resolvedDemoGif && (
             <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-white/10 bg-black">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={demoGif} alt="Exercise demo" className="w-full h-full object-cover" />
+              <img src={resolvedDemoGif} alt="Exercise demo" className="w-full h-full object-cover" />
               <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full border border-white/10 bg-black/60 backdrop-blur-md text-[10px] font-bold text-white/50 tracking-widest">
                 DEMO
               </div>

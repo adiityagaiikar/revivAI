@@ -140,30 +140,32 @@ export default function CognitiveGamesPage() {
               return (
                 <Card
                   key={game.slug}
-                  className="bg-black/[0.96] border-white/10 p-6 hover:border-white/20 transition-all cursor-pointer group"
+                  className="bg-black/[0.96] border-white/10 p-6 hover:border-white/20 transition-all flex flex-col h-full cursor-pointer group"
                 >
                   <div className="p-4 rounded-lg bg-white/5 w-fit mb-4 text-purple-400">
                     <Icon className="h-8 w-8" />
                   </div>
                   <h3 className="text-xl font-semibold text-white mb-2">{game.name}</h3>
                   <p className="text-neutral-400 text-sm mb-4">{game.description}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-neutral-300">
-                        {game.category}
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        game.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
-                        game.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-red-500/20 text-red-400'
-                      }`}>
-                        {game.difficulty}
-                      </span>
-                    </div>
-                    <Link href={`/cognitive-games/${game.slug}`}>
-                      <button type="button" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black hover:bg-white/90 transition-colors opacity-0 group-hover:opacity-100">
+                  
+                  <div className="flex items-center gap-2 mb-6">
+                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-neutral-300">
+                      {game.category}
+                    </span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      game.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
+                      game.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                      'bg-red-500/20 text-red-400'
+                    }`}>
+                      {game.difficulty}
+                    </span>
+                  </div>
+
+                  <div className="mt-auto pt-6 border-t border-white/10">
+                    <Link href={`/cognitive-games/${game.slug}`} className="block">
+                      <button type="button" className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-white text-black hover:bg-white/90 transition-all font-semibold opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0">
                         <Play className="h-4 w-4" />
-                        Play
+                        Play Game
                       </button>
                     </Link>
                   </div>

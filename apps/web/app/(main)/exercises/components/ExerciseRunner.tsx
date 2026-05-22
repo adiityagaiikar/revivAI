@@ -34,11 +34,26 @@ export default function ExerciseRunner({
 
   // Handle video stream changes
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream
-      videoRef.current.onloadedmetadata = () => {
-        videoRef.current?.play().catch(err => console.error('Video play error:', err))
-      }
+    const video = videoRef.current
+    if (!video || !stream) return
+
+    video.srcObject = stream
+
+    // onloadedmetadata fires when metadata is ready; also call play() directly
+    // in case metadata was already loaded before this effect ran.
+    const tryPlay = () => {
+      video.play().catch(err => console.error('Video play error:', err))
+    }
+
+    if (video.readyState >= 1) {
+      // Metadata already available — play immediately
+      tryPlay()
+    } else {
+      video.onloadedmetadata = tryPlay
+    }
+
+    return () => {
+      video.onloadedmetadata = null
     }
   }, [stream])
 
@@ -240,13 +255,13 @@ export default function ExerciseRunner({
               />
             )}
 
-            {/* Hidden persistent local video for frame extraction. Show only when previewing camera locally without AI */}
+            {/* Persistent local video for frame extraction. Visible only when previewing camera without AI overlay */}
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
-              className={`w-full h-full object-cover transform scale-x-[-1] z-10 bg-black absolute inset-0 ${!stream || frameSrc ? 'opacity-0' : 'opacity-100'}`}
+              className={`w-full h-full object-cover transform scale-x-[-1] z-10 absolute inset-0 transition-opacity duration-200 ${!stream || frameSrc ? 'opacity-0' : 'opacity-100'}`}
             />
             
             {/* Stats Overlay */}

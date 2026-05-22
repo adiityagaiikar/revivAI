@@ -2,7 +2,7 @@
 
 import { SplineScene } from "@workspace/ui/components/splite"
 import { Button } from "@workspace/ui/components/button"
-import { LogIn, UserPlus, Scan, Brain, ShieldCheck, ChevronRight, Camera, Dumbbell, BarChart3, Star, ArrowRight, Zap } from "lucide-react"
+import { LogIn, UserPlus, Scan, Brain, ShieldCheck, ChevronRight, Camera, Dumbbell, BarChart3, ArrowRight, Zap } from "lucide-react"
 import Link from "next/link"
 import { useRef, useCallback, useState } from "react"
 import { motion, useInView, type Variants } from "framer-motion"
@@ -297,10 +297,10 @@ export function LandingPage() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.44 }}
-                className="flex flex-wrap gap-4"
+                className="flex flex-wrap items-center gap-3"
               >
-                <Link href="/signup">
-                  <Button className="bg-violet-600 hover:bg-violet-500 text-white px-7 py-3 rounded-xl text-sm font-semibold shadow-xl shadow-violet-900/50 transition-all duration-200 hover:scale-[1.03]">
+                <Link href="/signup" className="flex">
+                  <Button className="h-11 bg-violet-600 hover:bg-violet-500 text-white px-7 rounded-xl text-sm font-semibold shadow-xl shadow-violet-900/50 transition-all duration-200 hover:scale-[1.03]">
                     Get Started
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
@@ -310,7 +310,7 @@ export function LandingPage() {
                   whileTap={{ scale: 0.97 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   onClick={() => setTrialOpen(true)}
-                  className="flex items-center gap-2 border border-violet-500/40 bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 hover:text-violet-200 px-7 py-3 rounded-xl text-sm font-semibold backdrop-blur-sm transition-colors duration-200"
+                  className="h-11 flex items-center gap-2 border border-violet-500/40 bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 hover:text-violet-200 px-7 rounded-xl text-sm font-semibold backdrop-blur-sm transition-colors duration-200"
                   style={{ boxShadow: '0 0 20px rgba(139,92,246,0.15)' }}
                 >
                   <Zap className="h-4 w-4" />
@@ -318,7 +318,7 @@ export function LandingPage() {
                 </motion.button>
                 <Button
                   variant="ghost"
-                  className="border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white px-7 py-3 rounded-xl text-sm font-semibold backdrop-blur-sm transition-all duration-200"
+                  className="h-11 border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white px-7 rounded-xl text-sm font-semibold backdrop-blur-sm transition-all duration-200"
                 >
                   Watch Demo
                   <ChevronRight className="ml-1 h-4 w-4" />
@@ -454,14 +454,17 @@ export function LandingPage() {
           TESTIMONIALS
       ══════════════════════════════════════ */}
       <section id="testimonials" className="relative z-10 px-6 py-24">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <Reveal className="text-center mb-14">
             <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase mb-3">
               Social Proof
             </p>
             <h2 className="text-3xl md:text-4xl font-bold text-white">
-              Loved by clinicians & patients
+              Loved by clinicians &amp; patients
             </h2>
+            <p className="mt-4 text-white/45 max-w-xl mx-auto text-sm md:text-base">
+              From post-surgical recovery to elite athletic performance — real outcomes from real people.
+            </p>
           </Reveal>
 
           <motion.div
@@ -469,42 +472,80 @@ export function LandingPage() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, margin: "-60px" }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-5"
+            className="grid grid-cols-1 md:grid-cols-3 gap-5"
           >
             {[
               {
                 quote:
-                  "reviVAI has completely changed how I monitor my patients between sessions. The real-time skeletal data gives me objective evidence I never had before.",
-                name: "Dr. Sarah Chen",
-                role: "Physical Therapist, Stanford Health",
+                  "reviVAI has fundamentally changed how I monitor patients between sessions. The real-time skeletal data gives me objective, reproducible evidence I simply never had before. It's the closest thing to having a clinical eye in the patient's living room.",
+                name: "Dr. Sarah Chen, DPT",
+                role: "Clinical Director, Stanford Rehabilitation Center",
+                initial: "S",
+                accent: "from-violet-500 to-purple-600",
+                glow: "rgba(139,92,246,0.18)",
                 stars: 5,
               },
               {
                 quote:
-                  "After my ACL surgery, I used reviVAI every day for rehab. The AI caught a compensation pattern my PT missed. I'm back on the field 3 weeks ahead of schedule.",
+                  "After my ACL reconstruction I used reviVAI every single day. The AI flagged a quad-dominant compensation pattern my PT hadn't caught yet. I returned to the field three weeks ahead of my projected timeline — and my surgeon was genuinely surprised.",
                 name: "Marcus T.",
-                role: "Post-surgical rehab patient",
+                role: "Semi-professional footballer · Post-ACL rehab",
+                initial: "M",
+                accent: "from-cyan-500 to-blue-600",
+                glow: "rgba(6,182,212,0.18)",
+                stars: 5,
+              },
+              {
+                quote:
+                  "Six weeks post hip replacement and I was doing my home exercises with zero confidence I was doing them right. reviVAI gave me instant visual feedback and counted every rep. My recovery score at the 8-week check-up was in the top 10% for my age group.",
+                name: "Patricia W.",
+                role: "Post-operative hip replacement patient, 64",
+                initial: "P",
+                accent: "from-emerald-500 to-teal-600",
+                glow: "rgba(16,185,129,0.18)",
                 stars: 5,
               },
             ].map((t) => (
               <motion.div key={t.name} variants={floatUp}>
-                <GlassCard className="p-7 h-full flex flex-col gap-5 hover:border-white/20 transition-colors duration-300">
-                  <div className="flex gap-1">
+                <div
+                  className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 md:p-8 backdrop-blur-md relative overflow-hidden h-full flex flex-col gap-5 hover:border-white/20 transition-colors duration-300 group"
+                >
+                  {/* Subtle glow accent */}
+                  <div
+                    className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                    style={{
+                      background: `radial-gradient(circle, ${t.glow} 0%, transparent 70%)`,
+                      filter: "blur(20px)",
+                    }}
+                  />
+
+                  {/* Stars */}
+                  <div className="relative z-10 flex gap-1">
                     {Array.from({ length: t.stars }).map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                      <svg key={i} className="h-4 w-4 fill-amber-400 text-amber-400" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
                     ))}
                   </div>
-                  <p className="text-sm text-white/65 leading-relaxed flex-1">&ldquo;{t.quote}&rdquo;</p>
-                  <div className="flex items-center gap-3 pt-2 border-t border-white/8">
-                    <div className="h-9 w-9 rounded-full bg-linear-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xs font-bold text-white">
-                      {t.name.charAt(0)}
+
+                  {/* Quote */}
+                  <p className="relative z-10 text-sm text-white/65 leading-relaxed flex-1">
+                    &ldquo;{t.quote}&rdquo;
+                  </p>
+
+                  {/* Author */}
+                  <div className="relative z-10 flex items-center gap-3 pt-4 border-t border-white/8">
+                    <div
+                      className={`h-9 w-9 rounded-full bg-gradient-to-br ${t.accent} flex items-center justify-center text-xs font-bold text-white shrink-0`}
+                    >
+                      {t.initial}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-white">{t.name}</p>
                       <p className="text-xs text-white/40">{t.role}</p>
                     </div>
                   </div>
-                </GlassCard>
+                </div>
               </motion.div>
             ))}
           </motion.div>

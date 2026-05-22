@@ -9,17 +9,26 @@ import {
   Brain,
   BarChart3,
   LogOut,
+  Calendar,
+  MessageSquare,
+  Settings,
 } from 'lucide-react'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { useUser } from '@/hooks/useUser'
 
 const menuItems = [
-  { name: 'Dashboard',         href: '/dashboard',         icon: LayoutDashboard },
-  { name: 'Fitness Assistant', href: '/fitness-assistant', icon: Dumbbell },
-  { name: 'Exercises',         href: '/exercises',         icon: Activity },
-  { name: 'Cognitive Games',   href: '/cognitive-games',   icon: Brain },
-  { name: 'Overall Analysis',  href: '/overall-analysis',  icon: BarChart3 },
+  { name: 'Dashboard',          href: '/dashboard',           icon: LayoutDashboard },
+  { name: 'Fitness Assistant',  href: '/fitness-assistant',   icon: Dumbbell },
+  { name: 'Exercises',          href: '/exercises',           icon: Activity },
+  { name: 'Cognitive Games',    href: '/cognitive-games',     icon: Brain },
+  { name: 'Overall Analysis',   href: '/overall-analysis',    icon: BarChart3 },
+]
+
+const clinicalMenuItems = [
+  { name: 'Care Plan',          href: '/care-plan',           icon: Calendar },
+  { name: 'Clinic Connect',     href: '/clinic-connect',      icon: MessageSquare },
+  { name: 'Device Calibration', href: '/device-calibration',  icon: Settings },
 ]
 
 /* ── Skeleton shimmer ── */
@@ -64,35 +73,75 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {menuItems.map((item) => {
-            const Icon     = item.icon
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+        <nav className="flex-1 p-4 overflow-y-auto space-y-4">
+          {/* ── Core ── */}
+          <div className="space-y-1">
+            {menuItems.map((item) => {
+              const Icon     = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
 
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-sm',
-                  isActive
-                    ? 'bg-white/10 text-white border border-white/15'
-                    : 'text-white/40 hover:text-white hover:bg-white/5'
-                )}
-              >
-                <Icon
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
                   className={cn(
-                    'h-4 w-4 shrink-0 transition-colors',
-                    isActive ? 'text-violet-400' : 'text-white/40 group-hover:text-white/70'
+                    'flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-sm',
+                    isActive
+                      ? 'bg-white/10 text-white border border-white/15'
+                      : 'text-white/40 hover:text-white hover:bg-white/5'
                   )}
-                />
-                <span className="font-medium">{item.name}</span>
-                {isActive && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />
-                )}
-              </Link>
-            )
-          })}
+                >
+                  <Icon
+                    className={cn(
+                      'h-4 w-4 shrink-0 transition-colors',
+                      isActive ? 'text-violet-400' : 'text-white/40 group-hover:text-white/70'
+                    )}
+                  />
+                  <span className="font-medium">{item.name}</span>
+                  {isActive && (
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />
+                  )}
+                </Link>
+              )
+            })}
+          </div>
+
+          {/* ── Clinical / B2B ── */}
+          <div>
+            <p className="px-4 pb-2 text-[10px] font-semibold text-white/20 uppercase tracking-widest">
+              Clinical
+            </p>
+            <div className="space-y-1">
+              {clinicalMenuItems.map((item) => {
+                const Icon     = item.icon
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      'flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-sm',
+                      isActive
+                        ? 'bg-cyan-500/10 text-white border border-cyan-500/20'
+                        : 'text-white/40 hover:text-white hover:bg-white/5'
+                    )}
+                  >
+                    <Icon
+                      className={cn(
+                        'h-4 w-4 shrink-0 transition-colors',
+                        isActive ? 'text-cyan-400' : 'text-white/40 group-hover:text-white/70'
+                      )}
+                    />
+                    <span className="font-medium">{item.name}</span>
+                    {isActive && (
+                      <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
         </nav>
 
         {/* User profile + logout */}

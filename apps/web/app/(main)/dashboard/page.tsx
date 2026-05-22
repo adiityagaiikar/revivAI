@@ -25,13 +25,13 @@ import { API } from '@/lib/api'
    Mock 7-day trend data for the area chart
 ───────────────────────────────────────────── */
 const TREND_DATA = [
-  { day: 'Mon', accuracy: 72, calories: 210 },
-  { day: 'Tue', accuracy: 68, calories: 180 },
-  { day: 'Wed', accuracy: 81, calories: 290 },
-  { day: 'Thu', accuracy: 77, calories: 240 },
-  { day: 'Fri', accuracy: 88, calories: 320 },
-  { day: 'Sat', accuracy: 84, calories: 300 },
-  { day: 'Sun', accuracy: 92, calories: 350 },
+  { day: 'Mon', maxAngle: 110 },
+  { day: 'Tue', maxAngle: 120 },
+  { day: 'Wed', maxAngle: 135 },
+  { day: 'Thu', maxAngle: 150 },
+  { day: 'Fri', maxAngle: 160 },
+  { day: 'Sat', maxAngle: 165 },
+  { day: 'Sun', maxAngle: 170 },
 ]
 
 /* ─────────────────────────────────────────────
@@ -71,8 +71,8 @@ function ChartTooltip({ active, payload, label }: any) {
       {payload.map((p: any) => (
         <div key={p.dataKey} className="flex items-center gap-2 mb-1">
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color }} />
-          <span className="text-white/60">{p.name}:</span>
-          <span className="text-white font-semibold">{p.value}{p.dataKey === 'accuracy' ? '%' : ' kcal'}</span>
+          <span className="text-white/60">{p.name === 'maxAngle' ? 'Max Angle' : p.name}:</span>
+          <span className="text-white font-semibold">{p.value}°</span>
         </div>
       ))}
     </div>
@@ -234,7 +234,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-base font-semibold text-white">7-Day Performance Trend</h2>
-                <p className="text-white/35 text-xs mt-0.5">Accuracy score vs calories burned</p>
+                <p className="text-white/35 text-xs mt-0.5">Range of Motion (Degrees)</p>
               </div>
               <span className="text-[10px] font-bold tracking-widest text-cyan-400 uppercase border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 rounded-full">
                 Live
@@ -243,36 +243,25 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={TREND_DATA} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="gradAccuracy" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#06b6d4" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gradCalories" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#a78bfa" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                  <linearGradient id="gradMaxAngle" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="rgba(6,182,212,0.5)" />
+                    <stop offset="95%" stopColor="rgba(6,182,212,0)" />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="day" stroke="rgba(255,255,255,0.2)" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="rgba(255,255,255,0.2)" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis domain={[90, 180]} stroke="rgba(255,255,255,0.2)" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
                 <Legend
                   wrapperStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', paddingTop: 12 }}
-                  formatter={(v) => v === 'accuracy' ? 'Accuracy (%)' : 'Calories (kcal)'}
+                  formatter={(v) => v === 'maxAngle' ? 'Max Angle (°)' : v}
                 />
                 <Area
-                  type="monotone" dataKey="accuracy" name="accuracy"
+                  type="monotone" dataKey="maxAngle" name="maxAngle"
                   stroke="#06b6d4" strokeWidth={2}
-                  fill="url(#gradAccuracy)"
+                  fill="url(#gradMaxAngle)"
                   dot={{ r: 3, fill: '#06b6d4', strokeWidth: 0 }}
                   activeDot={{ r: 5, fill: '#06b6d4', stroke: 'rgba(6,182,212,0.4)', strokeWidth: 4 }}
-                />
-                <Area
-                  type="monotone" dataKey="calories" name="calories"
-                  stroke="#a78bfa" strokeWidth={2}
-                  fill="url(#gradCalories)"
-                  dot={{ r: 3, fill: '#a78bfa', strokeWidth: 0 }}
-                  activeDot={{ r: 5, fill: '#a78bfa', stroke: 'rgba(167,139,250,0.4)', strokeWidth: 4 }}
                 />
               </AreaChart>
             </ResponsiveContainer>

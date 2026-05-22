@@ -4,6 +4,7 @@ import { Clock, Flame, Play, Search, Zap, ImageOff } from 'lucide-react'
 import { Input } from '@workspace/ui/components/input'
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { motion, type Variants } from 'framer-motion'
 import { ALL_EXERCISES, filterExercisesByPlan, type PatientPlan, type ExerciseItem } from '@/lib/activity-catalog'
 import { usePatientPlan } from '@/hooks/usePatientPlan'
@@ -43,24 +44,11 @@ const cardVariants: Variants = {
    GIF image with graceful fallback
 ───────────────────────────────────────────── */
 function ExerciseGif({ src, alt }: { src: string; alt: string }) {
-  const [errored, setErrored] = useState(false)
-
-  if (errored) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-white/2">
-        <ImageOff className="h-8 w-8 text-white/15" />
-        <span className="text-[10px] text-white/20 font-medium tracking-wide">GIF coming soon</span>
-      </div>
-    )
-  }
-
   return (
-    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
       alt={alt}
-      onError={() => setErrored(true)}
-      className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
+      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-500"
     />
   )
 }
@@ -80,9 +68,9 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
       animate="visible"
       className="bg-white/2 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/4 hover:border-white/20 transition-colors duration-300 flex flex-col group"
     >
-      {/* ── GIF preview ── */}
-      <div className="w-full relative overflow-hidden bg-black/50 aspect-video">
-        <ExerciseGif src={exercise.gifUrl} alt={`${exercise.name} demonstration`} />
+      {/* ── Thumbnail preview ── */}
+      <div className="w-full relative overflow-hidden bg-black/50 h-48">
+        <ExerciseGif src={exercise.thumbnailUrl} alt={`${exercise.name} demonstration`} />
 
         {/* Floating badges — top-right of GIF */}
         <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5 z-10">

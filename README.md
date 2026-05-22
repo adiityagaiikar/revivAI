@@ -88,3 +88,11 @@ npm --prefix apps/web start
 
 ## Contributing
 - Fork, make changes in feature branches, and open pull requests against the main branch.
+
+
+
+Frontend	npm run dev (from root)
+
+Node backend	cd backend && npm run dev
+
+Python FastAPI	cd backend && venv\Scripts\activate && uvicorn exercise_adapter:app --reload --port 8000
