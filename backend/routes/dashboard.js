@@ -243,6 +243,60 @@ router.get('/doctor/patients/:patientId/health-report-pdf', auth, async (req, re
   }
 });
 
+// ── Doctor: triage table — enriched patient list ──────────────────────────
+// GET /api/dashboard/doctor/triage
+// Returns all patients assigned to this doctor with compliance + form scores
+// computed live from Activity records, merged with any stored triage fields.
+router.get('/doctor/triage', auth, async (req, res) => {
+  try {
+    const doctor = await User.findById(req.user).select('role');
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(403).json({ error: 'Doctors only.' });
+    }
+
+    const patients = await User.find({
+      role: 'patient',
+      assignedDoctors: req.user,
+    }).select('name email condition complianceScore recentFormScores nextAppointment createdAt');
+
+    const enriched = await Promise.all(
+      patients.map(async (p) => {
+        // Pull last 5 scored activities for live form scores
+        const recentActivities = await Activity.find({ userId: p._id, score: { $exists: true, $ne: '' } })
+          .sort({ date: -1 })
+          .limit(5)
+          .select('score');
+
+        const liveFormScores = recentActivities
+          .map((a) => parseInt(a.score))
+          .filter((n) => !isNaN(n));
+
+        // Live compliance: average of recent form scores, fallback to stored value
+        const liveCompliance =
+          liveFormScores.length > 0
+            ? Math.round(liveFormScores.reduce((a, b) => a + b, 0) / liveFormScores.length)
+            : p.complianceScore ?? null;
+
+        return {
+          _id: p._id.toString(),
+          name: p.name,
+          email: p.email,
+          condition: p.condition || 'General Rehabilitation',
+          complianceScore: liveCompliance,
+          recentFormScores: liveFormScores.length > 0 ? liveFormScores : (p.recentFormScores || []),
+          nextAppointment: p.nextAppointment || null,
+          createdAt: p.createdAt,
+        };
+      })
+    );
+
+    res.json(enriched);
+  } catch (err) {
+    console.error('Triage route error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.patch('/doctor/tasks/:taskId', auth, async (req, res) => {
   try {
     const doctor = await User.findById(req.user).select('role');

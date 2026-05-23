@@ -1,92 +1,116 @@
 'use client'
 
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { LayoutDashboard, CheckSquare, Users, FileText, LogOut, Calendar } from "lucide-react"
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import {
+  LayoutDashboard, CheckSquare, Users, FileText, LogOut,
+  Calendar, MessageSquare, ClipboardList, BarChart3,
+} from 'lucide-react'
+import { cn } from '@workspace/ui/lib/utils'
+import { useAuth } from '@/lib/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
-export default function DoctorDashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+const menuItems = [
+  { name: 'Dashboard',          icon: LayoutDashboard, path: '/doctor-dashboard' },
+  { name: 'To Do List',         icon: CheckSquare,     path: '/doctor-dashboard/todo' },
+  { name: 'Patient Info',       icon: Users,           path: '/doctor-dashboard/patients' },
+  { name: 'Lab Reports',        icon: FileText,        path: '/doctor-dashboard/reports' },
+  { name: 'Scheduler & Alerts', icon: Calendar,        path: '/doctor-dashboard/scheduler' },
+  { name: 'Messages',           icon: MessageSquare,   path: '/doctor-dashboard/messages' },
+  { name: 'Care Plan Builder',  icon: ClipboardList,   path: '/doctor-dashboard/care-plan-builder' },
+  { name: 'Analytics',          icon: BarChart3,       path: '/doctor-dashboard/analytics' },
+]
+
+function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-white/10 ${className}`} />
+}
+
+function DoctorSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
+  const { user, loading, logout } = useAuth()
 
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    window.location.href = '/login'
-  }
-
-  const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/doctor-dashboard' },
-    { name: 'To Do List', icon: CheckSquare, path: '/doctor-dashboard/todo' },
-    { name: 'Patient Info', icon: Users, path: '/doctor-dashboard/patients' },
-    { name: 'Lab Reports', icon: FileText, path: '/doctor-dashboard/reports' },
-    { name: 'Scheduler & Alerts', icon: Calendar, path: '/doctor-dashboard/scheduler' },
-  ]
+  const avatarLetter = user?.name?.charAt(0).toUpperCase() ?? ''
 
   return (
-    <div className="min-h-screen bg-black text-white flex">
-      {/* Sidebar */}
-      <aside className="w-64 border-r border-white/10 bg-black/[0.96] flex flex-col">
-        <div className="p-6">
-          <Link href="/doctor-dashboard" className="text-2xl font-bold tracking-tight">
-            revivAl <span className="text-blue-500 text-sm align-top ml-1">Dr.</span>
-          </Link>
+    <aside
+      className="w-64 flex flex-col fixed h-full z-50 border-r border-white/8"
+      style={{ background: 'rgba(5,5,5,0.95)', backdropFilter: 'blur(16px)' }}
+    >
+      {/* Logo */}
+      <div className="p-6 border-b border-white/8 flex items-center gap-2">
+        <Link href="/doctor-dashboard" className="text-xl font-bold text-white tracking-tight hover:opacity-80 transition-opacity">
+          revi<span className="text-violet-400">VAI</span>
+        </Link>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 ml-1 font-medium">
+          Dr.
+        </span>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 p-4 overflow-y-auto space-y-1">
+        {menuItems.map((item) => {
+          const Icon = item.icon
+          const isActive =
+            item.path === '/doctor-dashboard'
+              ? pathname === '/doctor-dashboard'
+              : pathname === item.path || pathname.startsWith(`${item.path}/`)
+          return (
+            <Link key={item.path} href={item.path}
+              className={cn(
+                'flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-sm',
+                isActive ? 'bg-cyan-500/10 text-white border border-cyan-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'
+              )}
+            >
+              <Icon className={cn('h-4 w-4 shrink-0 transition-colors', isActive ? 'text-cyan-400' : 'text-white/40 group-hover:text-white/70')} />
+              <span className="font-medium">{item.name}</span>
+              {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+            </Link>
+          )
+        })}
+      </nav>
+
+      {/* User profile + logout */}
+      <div className="p-4 border-t border-white/8 space-y-2">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/8">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 flex items-center justify-center shrink-0 text-sm font-bold text-white">
+            {loading ? <Skeleton className="w-9 h-9 rounded-full" /> : (avatarLetter || 'D')}
+          </div>
+          <div className="flex-1 min-w-0">
+            {loading ? (
+              <><Skeleton className="h-3 w-24 mb-1.5" /><Skeleton className="h-2.5 w-32" /></>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-white truncate leading-tight">{user?.name ?? 'Doctor'}</p>
+                <p className="text-xs text-white/35 truncate leading-tight">
+                  {user?.email ?? '—'}
+                  <span className="ml-1.5 text-[10px] font-semibold text-cyan-400/70 uppercase">· Provider</span>
+                </p>
+              </>
+            )}
+          </div>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon
-            const isActive =
-              item.path === '/doctor-dashboard'
-                ? pathname === '/doctor-dashboard'
-                : pathname === item.path || pathname.startsWith(`${item.path}/`)
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive 
-                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
-                    : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Icon className="h-5 w-5" />
-                <span className="font-medium">{item.name}</span>
-              </Link>
-            )
-          })}
-        </nav>
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/35 hover:text-red-400 hover:bg-red-500/10 transition-colors text-sm font-medium"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </button>
+      </div>
+    </aside>
+  )
+}
 
-        <div className="p-4 border-t border-white/10 mt-auto">
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors font-medium"
-          >
-            <LogOut className="h-5 w-5" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-h-screen overflow-y-auto">
-        <header className="h-16 border-b border-white/10 flex items-center px-8 bg-black/50 backdrop-blur-sm sticky top-0 z-10 w-full justify-between">
-            <h2 className="text-xl font-semibold capitalize">
-              {pathname.split('/').pop()?.replace('-', ' ') || 'Dashboard'}
-            </h2>
-
-            <div className="flex items-center gap-4">
-               <div className="h-8 w-8 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center text-blue-400 font-bold">
-                 Dr
-               </div>
-            </div>
-        </header>
-        <div className="p-8">
-          {children}
-        </div>
-      </main>
-    </div>
+export default function DoctorDashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthGuard requiredRole="doctor">
+      <div className="min-h-screen w-full flex" style={{ background: '#050505' }}>
+        <DoctorSidebar />
+        <main className="flex-1 ml-64 min-h-screen" style={{ background: '#050505' }}>
+          <div className="p-8 max-w-7xl mx-auto">{children}</div>
+        </main>
+      </div>
+    </AuthGuard>
   )
 }

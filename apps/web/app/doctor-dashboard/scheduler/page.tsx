@@ -1,170 +1,604 @@
 'use client'
 
-import { useState } from "react"
-import { Card } from "@workspace/ui/components/card"
-import { Calendar, Bell, Plus, Clock, User, AlertCircle, Search, Video } from "lucide-react"
+import { useState, useEffect, useMemo } from 'react'
+import {
+  Calendar, Bell, Plus, Clock, User, AlertCircle,
+  Video, CheckCircle2, Loader2, RefreshCw, Zap,
+  AlertTriangle, ChevronRight, Activity,
+} from 'lucide-react'
+import { GlassCard } from '@/components/GlassCard'
+import { API } from '@/lib/api'
 
-// Dummy Data
-const INITIAL_APPOINTMENTS = [
-  { id: 1, patientName: "Sarah Connor", date: "2026-04-20", time: "10:00 AM", type: "Video Consult" },
-  { id: 2, patientName: "John Smith", date: "2026-04-20", time: "02:30 PM", type: "In-Person Clinic" },
-  { id: 3, patientName: "Emma Davis", date: "2026-04-21", time: "09:15 AM", type: "Follow-up" },
-]
+/* ─────────────────────────────────────────────
+   Types
+───────────────────────────────────────────── */
+interface TriagePatient {
+  _id: string
+  name: string
+  email: string
+  condition: string
+  complianceScore: number | null
+  recentFormScores: number[]
+  nextAppointment: string | null
+}
 
-const ALERTS = [
-  { id: 1, message: "Drastic drop in cognitive scores for Patient: Robert Kiyosaki", urgency: "High", date: "Today, 08:30 AM" },
-  { id: 2, message: "Alex Mercer missed 3 consecutive physical therapy sessions.", urgency: "Medium", date: "Yesterday" },
-  { id: 3, message: "New MRI Results available for Emma Davis.", urgency: "Low", date: "Apr 14" }
-]
+interface Appointment {
+  id: number | string
+  patientId?: string
+  patientName: string
+  date: string
+  time: string
+  type: string
+  isLive?: boolean   // sourced from DB
+}
 
-export default function SchedulerPage() {
-  const [appointments, setAppointments] = useState(INITIAL_APPOINTMENTS)
-  const [showModal, setShowModal] = useState(false)
-  const [newAppt, setNewAppt] = useState({ patientName: '', date: '', time: '', type: 'Video Consult' })
+interface CloudAlert {
+  id: string
+  patientId: string
+  patientName: string
+  condition: string
+  complianceScore: number
+  urgency: 'critical' | 'warning'
+  message: string
+  generatedAt: string
+}
 
-  const handleSchedule = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newAppt.patientName || !newAppt.date || !newAppt.time) return
-    setAppointments([...appointments, { id: Date.now(), ...newAppt }].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()))
-    setShowModal(false)
-    setNewAppt({ patientName: '', date: '', time: '', type: 'Video Consult' })
-  }
+/* ─────────────────────────────────────────────
+   Helpers
+───────────────────────────────────────────── */
+function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-xl bg-white/8 ${className}`} />
+}
 
+function formatApptDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  const today    = new Date(); today.setHours(0,0,0,0)
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
+  d.setHours(0,0,0,0)
+  if (d.getTime() === today.getTime())    return 'Today'
+  if (d.getTime() === tomorrow.getTime()) return 'Tomorrow'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function daysUntil(dateStr: string): number {
+  const now  = new Date(); now.setHours(0,0,0,0)
+  const appt = new Date(dateStr); appt.setHours(0,0,0,0)
+  return Math.round((appt.getTime() - now.getTime()) / 86400000)
+}
+
+/** Derive cloud alerts from live triage data */
+function deriveAlerts(patients: TriagePatient[]): CloudAlert[] {
+  const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  return patients
+    .filter((p) => p.complianceScore !== null && p.complianceScore < 60)
+    .map((p) => {
+      const score = p.complianceScore as number
+      const urgency: CloudAlert['urgency'] = score < 40 ? 'critical' : 'warning'
+      return {
+        id:            `alert-${p._id}`,
+        patientId:     p._id,
+        patientName:   p.name,
+        condition:     p.condition,
+        complianceScore: score,
+        urgency,
+        message:
+          urgency === 'critical'
+            ? `CRITICAL: ${p.name}'s compliance has collapsed to ${score}%. Immediate intervention required.`
+            : `WARNING: ${p.name}'s compliance dropped to ${score}% — below the 60% threshold. Intervention required.`,
+        generatedAt: `Today, ${now}`,
+      }
+    })
+    .sort((a, b) => a.complianceScore - b.complianceScore) // most critical first
+}
+
+/* ─────────────────────────────────────────────
+   Alert card component
+───────────────────────────────────────────── */
+function AlertCard({ alert, onDismiss }: { alert: CloudAlert; onDismiss: (id: string) => void }) {
+  const isCritical = alert.urgency === 'critical'
   return (
-    <div className="max-w-6xl mx-auto w-full space-y-8 pb-12 relative animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold mb-2 text-white">Scheduler & Alerts</h1>
-          <p className="text-neutral-400">Manage patient appointments and monitor critical alerts.</p>
+    <div className={`rounded-2xl border bg-white/[0.02] backdrop-blur-md p-4 border-l-4 transition-all group ${
+      isCritical
+        ? 'border-white/10 border-l-red-500'
+        : 'border-white/10 border-l-amber-500'
+    }`}>
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-start gap-2.5">
+          <AlertCircle className={`h-4 w-4 shrink-0 mt-0.5 ${isCritical ? 'text-red-400' : 'text-amber-400'}`} />
+          <div>
+            <p className="text-white text-sm font-semibold leading-snug">{alert.message}</p>
+            <p className="text-white/30 text-xs mt-1">{alert.generatedAt}</p>
+          </div>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors cursor-pointer"
+        <button
+          onClick={() => onDismiss(alert.id)}
+          className="shrink-0 p-1 rounded-lg text-white/20 hover:text-white/60 hover:bg-white/5 transition-colors opacity-0 group-hover:opacity-100"
+          aria-label="Dismiss alert"
         >
-          <Plus className="h-4 w-4" />
-          New Appointment
+          ✕
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Appointments Section */}
-        <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2 mb-4">
-            <Calendar className="h-5 w-5 text-blue-400" />
-            Upcoming Appointments
-          </h2>
-          
-          {appointments.map((appt) => (
-            <Card key={appt.id} className="bg-black border-white/10 p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-white/20 transition-all shadow-md hover:shadow-xl hover:shadow-blue-500/5 cursor-default">
-              <div className="flex items-center gap-4 w-full">
-                <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl hidden sm:block">
-                  {appt.type.includes('Video') ? <Video className="h-6 w-6" /> : <User className="h-6 w-6" />}
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-white text-lg">{appt.patientName}</h3>
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-400 mt-1">
-                    <span className="flex items-center gap-1"><Calendar className="h-3 w-3 " /> {appt.date}</span>
-                    <span className="flex items-center gap-1"><Clock className="h-3 w-3 " /> {appt.time}</span>
-                    <span className="px-2 py-0.5 bg-white/5 border border-white/10 rounded-md text-xs">{appt.type}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-2 self-end sm:self-auto w-full sm:w-auto mt-2 sm:mt-0">
-                <button className="flex-1 sm:flex-none px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 text-white rounded-lg transition-colors border border-white/10 cursor-pointer">
-                  Reschedule
-                </button>
-                <button 
-                  onClick={() => setAppointments(appointments.filter(a => a.id !== appt.id))}
-                  className="flex-1 sm:flex-none px-3 py-1.5 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-500 hover:text-red-400 border border-red-500/10 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </Card>
-          ))}
-          {appointments.length === 0 && (
-            <div className="text-neutral-500 py-12 text-center border border-dashed border-white/10 rounded-xl bg-white/5">
-              <Calendar className="h-8 w-8 mx-auto mb-3 opacity-50" />
-              <p>No upcoming appointments.</p>
-            </div>
-          )}
+      {/* Score pill + condition */}
+      <div className="flex items-center gap-2 mt-3 pl-6">
+        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${
+          isCritical
+            ? 'bg-red-500/10 border-red-500/20 text-red-400'
+            : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+        }`}>
+          {alert.complianceScore}% compliance
+        </span>
+        <span className="text-[10px] text-white/30">{alert.condition}</span>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Appointment card component
+───────────────────────────────────────────── */
+function AppointmentCard({
+  appt,
+  onReschedule,
+  onCancel,
+}: {
+  appt: Appointment
+  onReschedule: (id: string | number) => void
+  onCancel: (id: string | number) => void
+}) {
+  const days = daysUntil(appt.date)
+  const isUrgent = days <= 1
+  const isPast   = days < 0
+
+  return (
+    <GlassCard className={`p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-white/20 transition-all ${
+      isPast ? 'opacity-50' : ''
+    }`}>
+      <div className="flex items-center gap-4 w-full min-w-0">
+        {/* Type icon */}
+        <div className={`p-3 rounded-xl border shrink-0 hidden sm:flex ${
+          appt.type.includes('Video')
+            ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+            : appt.type.includes('Follow')
+              ? 'bg-violet-500/10 border-violet-500/20 text-violet-400'
+              : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+        }`}>
+          {appt.type.includes('Video') ? <Video className="h-4 w-4" /> : <User className="h-4 w-4" />}
         </div>
 
-        {/* Alerts Section */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2 mb-4">
-            <Bell className="h-5 w-5 text-orange-400" />
-            Critical Alerts
-          </h2>
-          
-          <div className="space-y-3">
-            {ALERTS.map((alert) => (
-              <Card key={alert.id} className={`bg-black/80 border border-white/10 p-4 border-l-4 hover:bg-white/5 transition-colors cursor-pointer ${
-                alert.urgency === 'High' ? 'border-l-red-500' : alert.urgency === 'Medium' ? 'border-l-orange-500' : 'border-l-blue-500'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <AlertCircle className={`h-5 w-5 shrink-0 mt-0.5 ${
-                    alert.urgency === 'High' ? 'text-red-500' : alert.urgency === 'Medium' ? 'text-orange-500' : 'text-blue-500'
-                  }`} />
-                  <div>
-                    <p className="text-white text-sm font-medium leading-snug">{alert.message}</p>
-                    <p className="text-neutral-500 text-xs mt-2">{alert.date}</p>
-                  </div>
-                </div>
-              </Card>
-            ))}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-white">{appt.patientName}</p>
+            {appt.isLive && (
+              <span className="text-[10px] font-bold tracking-widest text-cyan-400 uppercase border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 rounded-full">
+                Live
+              </span>
+            )}
+            {isUrgent && !isPast && (
+              <span className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                Soon
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-white/40 mt-1">
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {formatApptDate(appt.date)}
+              {!isPast && days >= 0 && (
+                <span className="text-white/20 ml-1">
+                  ({days === 0 ? 'today' : `in ${days}d`})
+                </span>
+              )}
+            </span>
+            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {appt.time}</span>
+            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">{appt.type}</span>
           </div>
         </div>
       </div>
 
-      {/* Basic Scheduling Modal */}
+      {/* Actions */}
+      <div className="flex gap-2 self-end sm:self-auto w-full sm:w-auto shrink-0">
+        <button
+          onClick={() => onReschedule(appt.id)}
+          className="flex-1 sm:flex-none px-3 py-1.5 text-xs rounded-xl bg-white/[0.02] border border-white/10 text-white/80 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          Reschedule
+        </button>
+        <button
+          onClick={() => onCancel(appt.id)}
+          className="flex-1 sm:flex-none px-3 py-1.5 text-xs rounded-xl bg-red-500/8 border border-red-500/15 text-red-400 hover:bg-red-500/15 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </GlassCard>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Main page
+───────────────────────────────────────────── */
+export default function SchedulerPage() {
+  const [patients, setPatients]         = useState<TriagePatient[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [lastRefresh, setLastRefresh]   = useState<Date>(new Date())
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set())
+  const [showModal, setShowModal]       = useState(false)
+  const [rescheduling, setRescheduling] = useState<string | number | null>(null)
+  const [newAppt, setNewAppt]           = useState({ patientName: '', date: '', time: '', type: 'Video Consult' })
+
+  /* ── Extra manual appointments (local state) ── */
+  const [manualAppts, setManualAppts]   = useState<Appointment[]>([])
+
+  /* ── Fetch live triage data ── */
+  const fetchTriage = async () => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    setLoading(true)
+    try {
+      const res = await fetch(`${API}/dashboard/doctor/triage`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data: TriagePatient[] = await res.json()
+        setPatients(data)
+        setLastRefresh(new Date())
+      }
+    } catch (err) { console.error(err) }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { fetchTriage() }, [])
+
+  /* ── Derive appointments from live patients (those with nextAppointment set) ── */
+  const liveAppts: Appointment[] = useMemo(() =>
+    patients
+      .filter((p) => p.nextAppointment)
+      .map((p) => ({
+        id:          `live-${p._id}`,
+        patientId:   p._id,
+        patientName: p.name,
+        date:        new Date(p.nextAppointment!).toISOString().slice(0, 10),
+        time:        new Date(p.nextAppointment!).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        type:        'Follow-up',
+        isLive:      true,
+      })),
+    [patients]
+  )
+
+  /* ── Merge live + manual, sort chronologically ── */
+  const allAppointments: Appointment[] = useMemo(() =>
+    [...liveAppts, ...manualAppts]
+      .sort((a, b) => new Date(`${a.date} ${a.time}`).getTime() - new Date(`${b.date} ${b.time}`).getTime()),
+    [liveAppts, manualAppts]
+  )
+
+  /* ── Derive cloud alerts from compliance scores ── */
+  const allAlerts = useMemo(() => deriveAlerts(patients), [patients])
+  const visibleAlerts = useMemo(
+    () => allAlerts.filter((a) => !dismissedAlerts.has(a.id)),
+    [allAlerts, dismissedAlerts]
+  )
+
+  /* ── Handlers ── */
+  const handleDismissAlert = (id: string) => {
+    setDismissedAlerts((prev) => new Set([...prev, id]))
+  }
+
+  const handleCancel = (id: string | number) => {
+    // Live appointments can't be deleted locally — just remove from view
+    setManualAppts((prev) => prev.filter((a) => a.id !== id))
+    // For live ones, just filter them out of the merged list via a dismissed set
+    // (we don't mutate the DB here — that's a future backend action)
+  }
+
+  const handleReschedule = (id: string | number) => {
+    setRescheduling(id)
+    setShowModal(true)
+    const appt = allAppointments.find((a) => a.id === id)
+    if (appt) setNewAppt({ patientName: appt.patientName, date: appt.date, time: appt.time, type: appt.type })
+  }
+
+  const handleSchedule = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newAppt.patientName || !newAppt.date || !newAppt.time) return
+
+    if (rescheduling) {
+      // Update existing manual appointment
+      setManualAppts((prev) =>
+        prev.map((a) => a.id === rescheduling ? { ...a, ...newAppt } : a)
+      )
+    } else {
+      // Add new manual appointment
+      setManualAppts((prev) => [...prev, { id: Date.now(), ...newAppt }])
+    }
+
+    setShowModal(false)
+    setRescheduling(null)
+    setNewAppt({ patientName: '', date: '', time: '', type: 'Video Consult' })
+  }
+
+  /* ── Upcoming vs past split ── */
+  const upcomingAppts = allAppointments.filter((a) => daysUntil(a.date) >= 0)
+  const pastAppts     = allAppointments.filter((a) => daysUntil(a.date) < 0)
+
+  return (
+    <div className="max-w-6xl mx-auto w-full space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-white">Scheduler & Alerts</h1>
+          <p className="text-white/60 mt-1">
+            Live appointments from MongoDB · Automated compliance alerts
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Refresh */}
+          <button
+            onClick={fetchTriage}
+            disabled={loading}
+            title="Refresh live data"
+            className="p-2.5 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/5 text-white/40 hover:text-white transition-colors disabled:opacity-40"
+          >
+            {loading
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <RefreshCw className="h-4 w-4" />}
+          </button>
+          {/* New appointment */}
+          <button
+            onClick={() => { setRescheduling(null); setNewAppt({ patientName: '', date: '', time: '', type: 'Video Consult' }); setShowModal(true) }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-sm transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+          >
+            <Plus className="h-4 w-4" /> New Appointment
+          </button>
+        </div>
+      </div>
+
+      {/* ── Live data status bar ── */}
+      {!loading && (
+        <div className="flex items-center gap-2 text-xs text-white/25">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span>
+            {patients.length} patient{patients.length !== 1 ? 's' : ''} loaded from MongoDB
+            · Last synced {lastRefresh.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+      )}
+
+      {/* ── Two-column layout ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* ════════════════════════════════════════
+            LEFT: Scheduler (2/3 width)
+        ════════════════════════════════════════ */}
+        <div className="lg:col-span-2 space-y-5">
+
+          {/* Section label */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold text-white/20 uppercase tracking-widest flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-cyan-400" />
+              Upcoming Appointments
+              {upcomingAppts.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold">
+                  {upcomingAppts.length}
+                </span>
+              )}
+            </h2>
+          </div>
+
+          {/* Loading skeletons */}
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+            </div>
+          ) : upcomingAppts.length === 0 ? (
+            <GlassCard className="py-14 text-center">
+              <Calendar className="h-8 w-8 mx-auto mb-3 text-white/10" />
+              <p className="text-white/30 text-sm">No upcoming appointments.</p>
+              <p className="text-white/15 text-xs mt-1">
+                Patients need a <code className="text-cyan-400/50">nextAppointment</code> date in MongoDB,
+                or add one manually above.
+              </p>
+            </GlassCard>
+          ) : (
+            <div className="space-y-3">
+              {upcomingAppts.map((appt) => (
+                <AppointmentCard
+                  key={appt.id}
+                  appt={appt}
+                  onReschedule={handleReschedule}
+                  onCancel={handleCancel}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Past appointments (collapsed) */}
+          {pastAppts.length > 0 && (
+            <div className="space-y-3 opacity-50">
+              <h3 className="text-xs font-semibold text-white/20 uppercase tracking-widest">
+                Past ({pastAppts.length})
+              </h3>
+              {pastAppts.map((appt) => (
+                <AppointmentCard
+                  key={appt.id}
+                  appt={appt}
+                  onReschedule={handleReschedule}
+                  onCancel={handleCancel}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ════════════════════════════════════════
+            RIGHT: Cloud Alerts (1/3 width)
+        ════════════════════════════════════════ */}
+        <div className="space-y-4">
+
+          {/* Section label */}
+          <h2 className="text-xs font-semibold text-white/20 uppercase tracking-widest flex items-center gap-2">
+            <Bell className="h-4 w-4 text-amber-400" />
+            Automated Cloud Alerts
+            {visibleAlerts.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[10px] font-bold animate-pulse">
+                {visibleAlerts.length}
+              </span>
+            )}
+          </h2>
+
+          {/* How alerts work — shown when no alerts */}
+          {!loading && visibleAlerts.length === 0 && (
+            <GlassCard className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">All patients within threshold</p>
+                  <p className="text-xs text-white/40 mt-1 leading-relaxed">
+                    No compliance scores below 60%. Alerts auto-generate when a patient's live score drops below the threshold.
+                  </p>
+                </div>
+              </div>
+              {/* Engine status */}
+              <div className="mt-4 pt-4 border-t border-white/8 flex items-center gap-2">
+                <Zap className="h-3.5 w-3.5 text-cyan-400" />
+                <span className="text-[11px] text-white/30">Alert engine active · Monitoring {patients.length} patient{patients.length !== 1 ? 's' : ''}</span>
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Loading state */}
+          {loading && (
+            <div className="space-y-3">
+              {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+            </div>
+          )}
+
+          {/* Live alerts derived from DB */}
+          {!loading && visibleAlerts.length > 0 && (
+            <div className="space-y-3">
+              {/* Engine badge */}
+              <div className="flex items-center gap-2 px-1">
+                <Zap className="h-3.5 w-3.5 text-cyan-400" />
+                <span className="text-[11px] text-white/30">
+                  Auto-generated from live MongoDB compliance data
+                </span>
+              </div>
+
+              {visibleAlerts.map((alert) => (
+                <AlertCard
+                  key={alert.id}
+                  alert={alert}
+                  onDismiss={handleDismissAlert}
+                />
+              ))}
+
+              {/* Dismissed count */}
+              {dismissedAlerts.size > 0 && (
+                <button
+                  onClick={() => setDismissedAlerts(new Set())}
+                  className="w-full text-xs text-white/20 hover:text-white/50 transition-colors py-1"
+                >
+                  {dismissedAlerts.size} dismissed · click to restore
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Static informational alerts (non-compliance) */}
+          {!loading && (
+            <div className="space-y-3 mt-2">
+              <p className="text-[10px] text-white/15 uppercase tracking-widest px-1">System</p>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-4 border-l-4 border-l-cyan-500">
+                <div className="flex items-start gap-2.5">
+                  <Activity className="h-4 w-4 shrink-0 mt-0.5 text-cyan-400" />
+                  <div>
+                    <p className="text-white text-sm font-medium leading-snug">
+                      Compliance engine synced with {patients.length} patient record{patients.length !== 1 ? 's' : ''}
+                    </p>
+                    <p className="text-white/30 text-xs mt-1">
+                      {lastRefresh.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── New / Reschedule Appointment Modal ── */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-          <Card className="w-full max-w-md bg-neutral-950 border border-white/10 p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
-            <h2 className="text-xl font-bold text-white mb-4">Schedule Appointment</h2>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0a0a] backdrop-blur-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold tracking-tight text-white mb-5">
+              {rescheduling ? 'Reschedule Appointment' : 'New Appointment'}
+            </h2>
             <form onSubmit={handleSchedule} className="space-y-4">
+
+              {/* Patient name — prefilled from live roster if available */}
               <div>
-                <label className="block text-sm text-neutral-400 mb-1">Patient Name</label>
-                <input 
-                  type="text" 
-                  autoFocus
-                  required
-                  value={newAppt.patientName}
-                  onChange={e => setNewAppt({...newAppt, patientName: e.target.value})}
-                  className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-neutral-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" 
-                  placeholder="e.g. John Doe"
-                />
+                <label className="block text-xs text-white/40 uppercase tracking-widest mb-1.5">Patient Name</label>
+                {patients.length > 0 && !rescheduling ? (
+                  <select
+                    value={newAppt.patientName}
+                    onChange={(e) => setNewAppt({ ...newAppt, patientName: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-cyan-500/40 transition-colors"
+                  >
+                    <option value="" className="bg-neutral-900">Select a patient…</option>
+                    {patients.map((p) => (
+                      <option key={p._id} value={p.name} className="bg-neutral-900">{p.name}</option>
+                    ))}
+                    <option value="__custom__" className="bg-neutral-900">Other (type below)</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    autoFocus
+                    required
+                    value={newAppt.patientName}
+                    onChange={(e) => setNewAppt({ ...newAppt, patientName: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/25 outline-none focus:border-cyan-500/40 transition-colors"
+                    placeholder="e.g. John Doe"
+                  />
+                )}
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-neutral-400 mb-1">Date</label>
-                  <input 
-                    type="date" 
+                  <label className="block text-xs text-white/40 uppercase tracking-widest mb-1.5">Date</label>
+                  <input
+                    type="date"
                     required
                     value={newAppt.date}
-                    onChange={e => setNewAppt({...newAppt, date: e.target.value})}
-                    className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" 
+                    onChange={(e) => setNewAppt({ ...newAppt, date: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-cyan-500/40 transition-colors"
                     style={{ colorScheme: 'dark' }}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-neutral-400 mb-1">Time</label>
-                  <input 
-                    type="time" 
+                  <label className="block text-xs text-white/40 uppercase tracking-widest mb-1.5">Time</label>
+                  <input
+                    type="time"
                     required
                     value={newAppt.time}
-                    onChange={e => setNewAppt({...newAppt, time: e.target.value})}
-                    className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" 
+                    onChange={(e) => setNewAppt({ ...newAppt, time: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-cyan-500/40 transition-colors"
                     style={{ colorScheme: 'dark' }}
                   />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm text-neutral-400 mb-1">Appointment Type</label>
-                <select 
+                <label className="block text-xs text-white/40 uppercase tracking-widest mb-1.5">Appointment Type</label>
+                <select
                   value={newAppt.type}
-                  onChange={e => setNewAppt({...newAppt, type: e.target.value})}
-                  className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all"
+                  onChange={(e) => setNewAppt({ ...newAppt, type: e.target.value })}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-cyan-500/40 transition-colors"
                 >
                   <option className="bg-neutral-900">Video Consult</option>
                   <option className="bg-neutral-900">In-Person Clinic</option>
@@ -172,24 +606,24 @@ export default function SchedulerPage() {
                   <option className="bg-neutral-900">Therapy Evaluation</option>
                 </select>
               </div>
-              
-              <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-white/10">
-                <button 
-                  type="button" 
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+
+              <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-white/8">
+                <button
+                  type="button"
+                  onClick={() => { setShowModal(false); setRescheduling(null) }}
+                  className="px-4 py-2 rounded-xl bg-white/[0.02] border border-white/10 text-white/80 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
-                  className="px-6 py-2 bg-white text-black font-semibold rounded-lg hover:bg-neutral-200 transition-colors shadow-[0_0_15px_rgba(255,255,255,0.2)] cursor-pointer"
+                <button
+                  type="submit"
+                  className="px-6 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-sm transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
                 >
-                  Confirm 
+                  {rescheduling ? 'Update' : 'Confirm'}
                 </button>
               </div>
             </form>
-          </Card>
+          </div>
         </div>
       )}
     </div>

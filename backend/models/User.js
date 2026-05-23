@@ -52,6 +52,26 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  // ── Clinical / Triage fields ──────────────────────────────
+  condition: {
+    type: String,
+    default: ''
+  },
+  complianceScore: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: null
+  },
+  recentFormScores: {
+    type: [Number],
+    default: []
+  },
+  nextAppointment: {
+    type: Date,
+    default: null
+  },
+
   // ── Gamification ──────────────────────────────────────────
   currentStreak: {
     type: Number,
