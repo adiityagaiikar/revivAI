@@ -55,6 +55,9 @@ export default function PushUpsPage() {
   const [stats,   setStats]   = useState({ reps: 0, angle: 0, feedback: '', stage: 'up' })
   const [err,     setErr]     = useState('')
 
+  const [currentLandmarks, setCurrentLandmarks] = useState<any>(null)
+  const lastLandmarkUpdate = useRef<number>(0)
+
   /* Load MediaPipe model once */
   useEffect(() => {
     let cancelled = false
@@ -153,6 +156,14 @@ export default function PushUpsPage() {
       feedback,
       stage: s.stage,
     })
+    const now = Date.now()
+    if (now - lastLandmarkUpdate.current > 333) {
+      if (results.poseLandmarks || (results.landmarks && results.landmarks[0])) {
+        const marks = results.poseLandmarks || results.landmarks[0]
+        setCurrentLandmarks(marks)
+        lastLandmarkUpdate.current = now
+      }
+    }
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
@@ -202,6 +213,8 @@ export default function PushUpsPage() {
       onStart={handleStart}
       onStop={handleStop}
       onReset={handleReset}
+      wsEndpoint="ws://127.0.0.1:8000/ws"
+      landmarks={currentLandmarks}
       videoSlot={
         <video ref={videoRef} autoPlay playsInline muted className="hidden" />
       }

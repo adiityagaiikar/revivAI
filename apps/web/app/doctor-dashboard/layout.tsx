@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, CheckSquare, Users, FileText, LogOut,
-  Calendar, MessageSquare, ClipboardList, BarChart3,
+  Calendar, MessageSquare, ClipboardList, BarChart3, LineChart,
 } from 'lucide-react'
 import { cn } from '@workspace/ui/lib/utils'
 import { useAuth } from '@/lib/AuthContext'
@@ -19,6 +19,7 @@ const menuItems = [
   { name: 'Messages',           icon: MessageSquare,   path: '/doctor-dashboard/messages' },
   { name: 'Care Plan Builder',  icon: ClipboardList,   path: '/doctor-dashboard/care-plan-builder' },
   { name: 'Analytics',          icon: BarChart3,       path: '/doctor-dashboard/analytics' },
+  { name: 'Model Diagnostics',   icon: LineChart,       path: '/doctor/analytics/model-diagnostics' },
 ]
 
 function Skeleton({ className = '' }: { className?: string }) {
@@ -71,8 +72,8 @@ function DoctorSidebar() {
 
       {/* User profile + logout */}
       <div className="p-4 border-t border-white/8 space-y-2">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/8">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 flex items-center justify-center shrink-0 text-sm font-bold text-white">
+        <div className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/3 px-3 py-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-cyan-500 to-violet-500 text-sm font-bold text-white">
             {loading ? <Skeleton className="w-9 h-9 rounded-full" /> : (avatarLetter || 'D')}
           </div>
           <div className="flex-1 min-w-0">

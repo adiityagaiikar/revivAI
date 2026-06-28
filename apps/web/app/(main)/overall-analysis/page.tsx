@@ -5,20 +5,23 @@ import { Spotlight } from "@workspace/ui/components/spotlight"
 import { BarChart3, TrendingUp, TrendingDown, Activity, Calendar, Target, Download } from "lucide-react"
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from '@/lib/AuthContext'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, LineChart, Line
 } from 'recharts'
 import { getGameScores } from "../cognitive-games/utils/gameScores"
 import { API } from '@/lib/api'
+import { getScopedStorageKey } from '@/lib/storage-scope'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type HandFoldingAvg  = { session: number; avgAngle: number; totalScore: number; date: string }
 type SquatAvg        = { session: number; avgAngle: number; totalReps: number;  date: string }
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
-function loadJSON<T>(key: string, fallback: T): T {
-  try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback } catch { return fallback }
+function loadJSON<T>(key: string, fallback: T, scopeId?: string | null): T {
+  const scopedKey = getScopedStorageKey(key, scopeId)
+  try { return JSON.parse(localStorage.getItem(scopedKey) ?? 'null') ?? fallback } catch { return fallback }
 }
 
 // ── Client-side PDF via print window ─────────────────────────────────────────
@@ -125,13 +128,18 @@ export default function OverallAnalysisPage() {
   const [dashboardData, setDashboardData] = useState<any>(null)
   const [isExporting,   setIsExporting]   = useState(false)
   const [loading,       setLoading]       = useState(true)
+  const [weeklyData, setWeeklyData] = useState<{ day: string; workouts: number; games: number }[]>(
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({ day, workouts: 0, games: 0 }))
+  )
+  const [weeklyLoading, setWeeklyLoading] = useState(true)
   const router = useRouter()
+  const { user } = useAuth()
 
   // ── Load localStorage data ──────────────────────────────────────────────────
-  const handHistory   = useMemo<HandFoldingAvg[]>(() => loadJSON('hand-folding-session-history', []), [])
-  const squatHistory  = useMemo<SquatAvg[]>(()       => loadJSON('squats-session-history', []),       [])
-  const patternScores = useMemo(() => getGameScores('pattern-matrix'), [])
-  const stroopScores  = useMemo(() => getGameScores('stroop-effect'),  [])
+  const handHistory   = useMemo<HandFoldingAvg[]>(() => loadJSON('hand-folding-session-history', [], user?.id), [user?.id])
+  const squatHistory  = useMemo<SquatAvg[]>(()       => loadJSON('squats-session-history', [], user?.id),       [user?.id])
+  const patternScores = useMemo(() => getGameScores('pattern-matrix'), [user?.id])
+  const stroopScores  = useMemo(() => getGameScores('stroop-effect'),  [user?.id])
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -147,6 +155,27 @@ export default function OverallAnalysisPage() {
     fetchDashboard()
   }, [router])
 
+  useEffect(() => {
+    const fetchWeekly = async () => {
+      const token = localStorage.getItem('token')
+      if (!token) { setWeeklyLoading(false); return }
+      try {
+        const res = await fetch(`${API}/dashboard/weekly-activity`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data) && data.length === 7) {
+            setWeeklyData(data)
+          }
+        }
+      } catch { /* network error — weeklyData stays zero-initialised */ } finally {
+        setWeeklyLoading(false)
+      }
+    }
+    fetchWeekly()
+  }, [])
+
   const handleDownloadPDF = () => {
     setIsExporting(true)
     try {
@@ -161,16 +190,6 @@ export default function OverallAnalysisPage() {
       setIsExporting(false)
     }
   }
-
-  const weeklyData = [
-    { day: 'Mon', workouts: 2, games: 3 },
-    { day: 'Tue', workouts: 1, games: 2 },
-    { day: 'Wed', workouts: 3, games: 1 },
-    { day: 'Thu', workouts: 2, games: 4 },
-    { day: 'Fri', workouts: 1, games: 2 },
-    { day: 'Sat', workouts: 4, games: 5 },
-    { day: 'Sun', workouts: 2, games: 2 },
-  ]
 
   const analytics = dashboardData?.stats ? [
     { label: dashboardData.stats[0]?.name || 'Consistency',  value: dashboardData.stats[0]?.value || '85',    change: '+5%',  trend: 'up' },
@@ -225,17 +244,21 @@ export default function OverallAnalysisPage() {
               <BarChart3 className="h-5 w-5 text-neutral-400" />
               <h2 className="text-xl font-semibold text-white">Weekly Activity Profile</h2>
             </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="day" stroke="#666" fontSize={12} />
-                <YAxis stroke="#666" fontSize={12} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend />
-                <Bar dataKey="workouts" name="Workouts"       fill="#3b82f6" radius={[4,4,0,0]} />
-                <Bar dataKey="games"    name="Cognitive Games" fill="#a855f7" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {weeklyLoading ? (
+              <div className="h-[260px] rounded-xl bg-white/5 animate-pulse" />
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={weeklyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                  <XAxis dataKey="day" stroke="#666" fontSize={12} />
+                  <YAxis stroke="#666" fontSize={12} />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} />
+                  <Legend />
+                  <Bar dataKey="workouts" name="Workouts"       fill="#3b82f6" radius={[4,4,0,0]} />
+                  <Bar dataKey="games"    name="Cognitive Games" fill="#a855f7" radius={[4,4,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </Card>
 
           {/* ── Exercise Improvement Graphs ── */}

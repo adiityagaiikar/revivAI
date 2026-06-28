@@ -52,14 +52,14 @@ export default function SignupPage() {
         throw new Error(data.message || 'Signup failed')
       }
 
-      // Store token and redirect
+      // Store token and redirect to triage onboarding
       localStorage.setItem('token', data.token)
-      router.push('/dashboard')
+      router.push('/onboarding')
       router.refresh()
       
       // Fallback redirect if router doesn't work
       setTimeout(() => {
-        window.location.href = '/dashboard'
+        window.location.href = '/onboarding'
       }, 100)
     } catch (err: any) {
       setError(err.message)

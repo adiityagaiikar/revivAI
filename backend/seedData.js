@@ -43,7 +43,7 @@ const seedDashboards = async () => {
 
     // Add tasks & reports for doctors
     for (const doctor of doctors) {
-      const assignedPatients = await User.find({ role: 'patient', assignedDoctors: doctor._id });
+      const assignedPatients = await User.find({ role: 'patient', assignedDoctor: doctor._id });
       
       const numTasks = Math.floor(Math.random() * 5) + 3;
       for(let i=0; i<numTasks; i++) {

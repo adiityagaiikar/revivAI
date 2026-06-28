@@ -3,7 +3,7 @@
 import {
   Activity, Flame, Timer, Trophy, TrendingUp,
   Upload, FileText, ChevronDown, ChevronUp,
-  Users, Dumbbell, Brain, Zap,
+  Users, Dumbbell, Brain, Zap, ClipboardList, CheckSquare, AlertTriangle,
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -89,6 +89,9 @@ function Skeleton({ className = '' }: { className?: string }) {
 /* ─────────────────────────────────────────────
    Main dashboard
 ───────────────────────────────────────────── */
+/* ── Inline toast ── */
+interface Toast { id: number; message: string; type: 'success' | 'error' }
+
 export default function DashboardPage() {
   const [doctors, setDoctors]               = useState<any[]>([])
   const [dashboardData, setDashboardData]   = useState<any>(null)
@@ -96,6 +99,7 @@ export default function DashboardPage() {
   const [medicalHistory, setMedicalHistory] = useState<string | null>(null)
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const [uploading, setUploading]           = useState(false)
+  const [toast, setToast]                   = useState<Toast | null>(null)
   const router = useRouter()
   const { plan, loading: planLoading } = usePatientPlan()
 
@@ -107,6 +111,13 @@ export default function DashboardPage() {
     () => filterGamesByPlan(ALL_COGNITIVE_GAMES, plan as PatientPlan | null).length,
     [plan]
   )
+
+  /* ── Show a toast that auto-dismisses after 3 s ── */
+  const showToast = (message: string, type: Toast['type'] = 'success') => {
+    const id = Date.now()
+    setToast({ id, message, type })
+    setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 3000)
+  }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -124,9 +135,22 @@ export default function DashboardPage() {
       if (res.ok) {
         const meRes = await fetch(`${API}/history/me`, { headers: { Authorization: `Bearer ${token}` } })
         if (meRes.ok) { const d = await meRes.json(); setMedicalHistory(d.medicalHistory || null) }
+        showToast('Medical history uploaded successfully!')
+      } else {
+        showToast('Upload failed. Please try again.', 'error')
       }
-    } catch (err) { console.error(err) }
+    } catch (err) { console.error(err); showToast('Upload failed. Please try again.', 'error') }
     finally { setUploading(false) }
+  }
+
+  /* Dummy upload: 2-second simulated load then toast */
+  const handleDummyUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    setUploading(false)
+    showToast(`"${file.name}" uploaded successfully!`)
   }
 
   useEffect(() => {
@@ -159,6 +183,60 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8" style={{ fontFamily: "var(--font-sans, 'Inter', sans-serif)" }}>
+
+      {dashboardData?.weeklySmartNudge ? (
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+        >
+          <GlassCard
+            className="relative overflow-hidden border border-orange-500/30 bg-orange-500/10 p-5"
+            style={{
+              borderColor: 'rgba(249, 115, 22, 0.3)',
+              boxShadow: '0 0 0 1px rgba(249, 115, 22, 0.2), 0 0 42px rgba(249, 115, 22, 0.14)',
+            }}
+          >
+            <div className="pointer-events-none absolute inset-0 bg-linear-to-r from-orange-500/15 via-transparent to-transparent" />
+            <div className="relative flex items-start gap-3">
+              <div className="rounded-xl border border-orange-400/25 bg-orange-400/10 p-2 text-orange-300">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-orange-300/80">
+                  Weekly compliance summary
+                </p>
+                <p className="mt-2 text-sm leading-6 text-white/90">
+                  {dashboardData.weeklySmartNudge}
+                </p>
+              </div>
+            </div>
+          </GlassCard>
+        </motion.div>
+      ) : null}
+
+      {/* ── Toast notification ── */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: -16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0,   scale: 1 }}
+            exit={{   opacity: 0, y: -16, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl border text-sm font-medium shadow-2xl backdrop-blur-md ${
+              toast.type === 'success'
+                ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-300'
+                : 'border-red-500/30 bg-red-500/15 text-red-300'
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${
+              toast.type === 'success' ? 'bg-emerald-400' : 'bg-red-400'
+            }`} />
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -391,8 +469,8 @@ export default function DashboardPage() {
                 uploading ? 'border-white/10 bg-white/5 text-white/30' : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20'
               }`}>
                 <Upload className="h-4 w-4" />
-                {uploading ? 'Extracting…' : 'Upload PDF'}
-                <input type="file" accept=".pdf,.png,.jpg" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+                {uploading ? 'Uploading…' : 'Upload PDF'}
+                <input type="file" accept=".pdf,.png,.jpg" className="hidden" onChange={handleDummyUpload} disabled={uploading} />
               </label>
             </div>
           ) : historyExpanded ? (
@@ -448,8 +526,59 @@ export default function DashboardPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white truncate">{doctor.name}</p>
-                    <p className="text-xs text-white/35">Assigned Clinician</p>
+                    <p className="text-xs text-white/35">
+                      {doctor.specialties?.[0] ?? 'Assigned Clinician'}
+                    </p>
                   </div>
+                </div>
+              ))
+            )}
+          </div>
+        </GlassCard>
+      </motion.div>
+
+      {/* ── Care Plan Tasks ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 24, delay: 0.69 }}
+      >
+        <GlassCard className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-white">Your Assigned Care Plan</h2>
+            <ClipboardList className="h-4 w-4 text-white/30" />
+          </div>
+          <div className="space-y-3">
+            {planLoading ? (
+              Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-16" />)
+            ) : !plan || !('careTasks' in plan) || (plan as any).careTasks?.length === 0 ? (
+              <p className="text-white/30 text-sm">No care plan tasks assigned yet.</p>
+            ) : (
+              (plan as any).careTasks.map((task: any, i: number) => (
+                <div key={i} className="flex items-center justify-between p-4 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                      task.taskType === 'PHYSICAL' 
+                        ? 'bg-blue-500/10 text-blue-400' 
+                        : 'bg-purple-500/10 text-purple-400'
+                    }`}>
+                      {task.taskType === 'PHYSICAL' ? <Activity className="h-5 w-5" /> : <Brain className="h-5 w-5" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{task.taskName}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-white/40">
+                          {task.assignedDay}
+                        </span>
+                        <span className="text-xs text-white/40">Target: {task.targetValue} {task.taskType === 'PHYSICAL' ? 'reps' : 'mins'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {task.isCompleted ? (
+                    <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1"><CheckSquare className="h-4 w-4" /> Done</span>
+                  ) : (
+                    <span className="text-xs font-semibold text-amber-400 flex items-center gap-1"><Timer className="h-4 w-4" /> Pending</span>
+                  )}
                 </div>
               ))
             )}

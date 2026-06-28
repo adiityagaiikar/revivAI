@@ -41,6 +41,37 @@ export default function BurpeesPage() {
   const [stats,   setStats]   = useState({ reps: 0, angle: 0, feedback: '' })
   const [err,     setErr]     = useState('')
 
+  const [currentLandmarks, setCurrentLandmarks] = useState<any>(null)
+  const lastLandmarkUpdate = useRef<number>(0)
+
+  // ── WebSocket AI inference (same pattern as ExerciseShell) ────────────────
+  const wsRef           = useRef<WebSocket | null>(null)
+  const frameBufferRef  = useRef<number[][]>([])
+  const wsLastCapture   = useRef<number>(0)
+
+  useEffect(() => {
+    const ws = new WebSocket('ws://127.0.0.1:8000/ws')
+    wsRef.current = ws
+    return () => { ws.close(); wsRef.current = null }
+  }, [])
+
+  useEffect(() => {
+    if (!currentLandmarks || currentLandmarks.length !== 33) return
+    const now = Date.now()
+    if (now - wsLastCapture.current <= 333) return
+    const flat = (currentLandmarks as any[]).flatMap((lm: any) => [lm.x, lm.y, lm.z])
+    frameBufferRef.current.push(flat)
+    wsLastCapture.current = now
+    if (frameBufferRef.current.length === 10) {
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ frames: frameBufferRef.current, age: 25, weight: 70.0, exercise_type: 'burpees' }))
+      }
+      frameBufferRef.current = []
+    }
+  }, [currentLandmarks])
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -133,14 +164,21 @@ export default function BurpeesPage() {
     }
 
     setStats({ reps: s.reps, angle: displayAngle, feedback })
+    const now = Date.now()
+    if (now - lastLandmarkUpdate.current > 333) {
+      if (results.poseLandmarks || (results.landmarks && results.landmarks[0])) {
+        const marks = results.poseLandmarks || results.landmarks[0]
+        setCurrentLandmarks(marks)
+        lastLandmarkUpdate.current = now
+      }
+    }
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
   const start = useCallback(async () => {
     setErr('')
     await startCamera()
-    stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
-    setStats({ reps: 0, angle: 0, feedback: '' })
+    stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }    setStats({ reps: 0, angle: 0, feedback: '' })
     setRunning(true)
     rafRef.current = requestAnimationFrame(detect)
   }, [startCamera, detect])

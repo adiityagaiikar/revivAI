@@ -2,37 +2,37 @@
 
 import { useState, useCallback, memo } from 'react';
 import GameShell from '../components/GameShell';
-import { Activity } from 'lucide-react';
 import { saveGameScore } from '../utils/gameScores';
 
-// Memoized tile component for performance optimization
-const GameTile = memo(({ 
-  index, 
-  isTarget, 
-  isSelected, 
-  phase, 
-  onClick 
-}: { 
-  index: number; 
-  isTarget: boolean; 
-  isSelected: boolean; 
-  phase: 'idle' | 'memorize' | 'recall'; 
-  onClick: (index: number) => void; 
+// Memoized tile
+const GameTile = memo(({
+  index,
+  isTarget,
+  isSelected,
+  phase,
+  onClick,
+}: {
+  index: number;
+  isTarget: boolean;
+  isSelected: boolean;
+  phase: 'idle' | 'memorize' | 'recall';
+  onClick: (index: number) => void;
 }) => {
-  // Determine tile color based on game phase
-  let tileStyle = 'bg-[#2A2A2A] hover:bg-[#333333] cursor-pointer transition-all duration-150';
+  let base = 'w-16 h-16 sm:w-20 sm:h-20 rounded-xl transition-all duration-150 ';
   if (phase === 'memorize' && isTarget) {
-    tileStyle = 'bg-white shadow-[0_0_15px_rgba(255,255,255,0.4)] scale-105';
+    base += 'bg-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.6)] scale-105 cursor-not-allowed';
   } else if (phase === 'recall' && isSelected) {
-    tileStyle = 'bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)] scale-105';
-  } else if (phase !== 'recall') {
-    tileStyle = 'bg-[#2A2A2A] cursor-not-allowed opacity-80';
+    base += 'bg-violet-500 shadow-[0_0_20px_rgba(139,92,246,0.5)] scale-105 cursor-pointer';
+  } else if (phase === 'recall') {
+    base += 'bg-white/8 border border-white/10 hover:bg-white/15 hover:border-white/20 cursor-pointer';
+  } else {
+    base += 'bg-white/5 border border-white/8 cursor-not-allowed opacity-70';
   }
 
   return (
     <div
       onClick={() => phase === 'recall' && onClick(index)}
-      className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl ${tileStyle}`}
+      className={base}
     />
   );
 });
@@ -45,53 +45,48 @@ export default function PatternMatrixGame() {
   const [activeTiles, setActiveTiles] = useState<number[]>([]);
   const [userTiles, setUserTiles] = useState<number[]>([]);
   const [visualUserTiles, setVisualUserTiles] = useState<number[]>([]);
+  const [lastResult, setLastResult] = useState<'correct' | 'wrong' | null>(null);
 
-  const GRID_SIZE = 16; // 4x4 grid
-
-  const startGame = useCallback(() => {
-    setLevel(1);
-    startLevel(1);
-  }, []);
+  const GRID_SIZE = 16;
 
   const startLevel = useCallback(async (currentLevel: number) => {
     setPhase('idle');
     setUserTiles([]);
     setVisualUserTiles([]);
-    
-    // Number of tiles to remember increases with level
-    const tilesToRemember = Math.min(3 + currentLevel, GRID_SIZE - 2); 
-    
-    // Generate random unique tiles
+    setLastResult(null);
+
+    const tilesToRemember = Math.min(3 + currentLevel, GRID_SIZE - 2);
     const newTiles = new Set<number>();
     while (newTiles.size < tilesToRemember) {
       newTiles.add(Math.floor(Math.random() * GRID_SIZE));
     }
-    
+
     const tileArray = Array.from(newTiles);
     setActiveTiles(tileArray);
 
-    // Show sequence
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 400));
     setPhase('memorize');
-    await new Promise(r => setTimeout(r, 2000)); // Show pattern for 2 seconds
+    await new Promise(r => setTimeout(r, 2000));
     setPhase('recall');
   }, []);
+
+  const startGame = useCallback(() => {
+    setLevel(1);
+    startLevel(1);
+  }, [startLevel]);
 
   const handleTileClick = useCallback((index: number) => {
     if (phase !== 'recall') return;
 
-    // Instant visual feedback - decoupled from logic
-    let newVisualSelection = [...visualUserTiles];
-    if (newVisualSelection.includes(index)) {
-      newVisualSelection = newVisualSelection.filter(t => t !== index);
+    let newVisual = [...visualUserTiles];
+    if (newVisual.includes(index)) {
+      newVisual = newVisual.filter(t => t !== index);
     } else {
-      newVisualSelection.push(index);
+      newVisual.push(index);
     }
-    setVisualUserTiles(newVisualSelection);
+    setVisualUserTiles(newVisual);
 
-    // Debounced logic processing to prevent blocking
     setTimeout(() => {
-      // Toggle tile selection
       let newSelection = [...userTiles];
       if (newSelection.includes(index)) {
         newSelection = newSelection.filter(t => t !== index);
@@ -100,50 +95,61 @@ export default function PatternMatrixGame() {
       }
       setUserTiles(newSelection);
 
-      // Check if user has selected the required amount of tiles
       if (newSelection.length === activeTiles.length) {
         const isCorrect = newSelection.every(t => activeTiles.includes(t));
-        
+        setLastResult(isCorrect ? 'correct' : 'wrong');
         setPhase('idle');
         if (isCorrect) {
-          setTimeout(() => startLevel(level + 1), 1000);
-          setLevel(l => l + 1);
+          setTimeout(() => { setLevel(l => l + 1); startLevel(level + 1); }, 900);
         } else {
-          saveGameScore('pattern-matrix', Math.min(100, (level - 1) * 20), `Level: ${level}`)
-          setTimeout(() => {
-            setLevel(1);
-            startLevel(1);
-          }, 1500);
+          saveGameScore('pattern-matrix', Math.min(100, (level - 1) * 20), `Level: ${level}`);
+          setTimeout(() => { setLevel(1); startLevel(1); }, 1500);
         }
       }
-    }, 0); // Non-blocking
+    }, 0);
   }, [phase, visualUserTiles, userTiles, activeTiles, level, startLevel]);
 
   return (
-    <GameShell 
-      title="Pattern Matrix" 
+    <GameShell
+      title="Pattern Matrix"
       category="Visual Memory"
       gameSlug="pattern-matrix"
       stats={
-        <div className="text-center">
-          <p className="text-xs text-neutral-400 uppercase">Level</p>
-          <p className="text-2xl font-bold text-white">{level}</p>
+        <div className="flex items-center gap-3">
+          <div className="text-center px-4 py-2 rounded-xl bg-white/5 border border-white/10">
+            <p className="text-[10px] text-white/40 uppercase tracking-widest">Level</p>
+            <p className="text-xl font-bold text-white">{level}</p>
+          </div>
+          <div className="text-center px-4 py-2 rounded-xl bg-white/5 border border-white/10">
+            <p className="text-[10px] text-white/40 uppercase tracking-widest">Tiles</p>
+            <p className="text-xl font-bold text-cyan-400">{Math.min(3 + level, GRID_SIZE - 2)}</p>
+          </div>
         </div>
       }
     >
-      <div className="flex flex-col items-center">
-        <div className="flex items-center justify-center mb-8">
-          <Activity className="w-16 h-16 text-green-400" />
-        </div>
-        <p className="text-neutral-400 mb-8 h-6">
-          {phase === 'memorize' && "Memorize the glowing tiles..."}
-          {phase === 'recall' && "Recreate the pattern!"}
-          {phase === 'idle' && level > 1 && userTiles.length === activeTiles.length && 
-            (visualUserTiles.every(t => activeTiles.includes(t)) ? <span className="text-green-400 font-bold">Correct! Ready for next level...</span> : <span className="text-red-400 font-bold">Pattern incorrect. Try again...</span>)
-          }
-        </p>
+      <div className="flex flex-col items-center gap-6 w-full">
 
-        <div className="grid grid-cols-4 gap-3 bg-[#1A1A1A] p-4 rounded-2xl border border-white/5 mb-8">
+        {/* Phase label */}
+        <div className="h-8 flex items-center">
+          {phase === 'memorize' && (
+            <span className="flex items-center gap-2 text-sm text-cyan-400 font-semibold">
+              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+              Memorize the pattern…
+            </span>
+          )}
+          {phase === 'recall' && (
+            <span className="text-sm text-violet-400 font-semibold">Recreate the pattern!</span>
+          )}
+          {phase === 'idle' && lastResult === 'correct' && (
+            <span className="text-sm text-emerald-400 font-bold">✓ Correct! Loading next level…</span>
+          )}
+          {phase === 'idle' && lastResult === 'wrong' && (
+            <span className="text-sm text-red-400 font-bold">✗ Incorrect. Restarting…</span>
+          )}
+        </div>
+
+        {/* Grid */}
+        <div className="grid grid-cols-4 gap-3 bg-white/[0.02] border border-white/8 p-5 rounded-2xl">
           {Array.from({ length: GRID_SIZE }).map((_, i) => (
             <GameTile
               key={i}
@@ -156,14 +162,19 @@ export default function PatternMatrixGame() {
           ))}
         </div>
 
-        {phase === 'idle' && (
-          <button 
+        {/* Start button */}
+        {phase === 'idle' && lastResult === null && (
+          <button
             onClick={startGame}
-            className="px-8 py-3 bg-white text-black font-semibold rounded-full hover:bg-gray-200 hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
+            className="px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-500 hover:from-cyan-400 hover:to-violet-400 text-white font-semibold text-sm transition-all duration-200 shadow-[0_0_20px_rgba(6,182,212,0.3)]"
           >
-            {level > 1 ? 'Next Level' : 'Start Game'}
+            {level > 1 ? 'Continue' : 'Start Game'}
           </button>
         )}
+
+        <p className="text-[11px] text-white/25 text-center">
+          Watch the highlighted tiles, then click the same positions from memory.
+        </p>
       </div>
     </GameShell>
   );

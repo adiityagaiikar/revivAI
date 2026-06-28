@@ -18,8 +18,8 @@ const seedDoctors = async () => {
       const existing = await User.findOne({ email });
       if (!existing) {
         const doc = new User({
-          name: `Dr. Smith ${i}`,
-          username: `drsmith${i}`,
+          name: i === 1 ? 'Dr. Viren' : `Dr. Smith ${i}`,
+          username: i === 1 ? 'drviren' : `drsmith${i}`,
           email,
           password: 'password123',
           role: 'doctor'

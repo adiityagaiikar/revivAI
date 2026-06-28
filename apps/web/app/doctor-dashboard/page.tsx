@@ -9,6 +9,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GlassCard } from '@/components/GlassCard'
 import { API } from '@/lib/api'
+import { getPusherClient } from '@/lib/pusher-client'
+import { motion, AnimatePresence } from 'framer-motion'
 
 /* ─────────────────────────────────────────────
    Types
@@ -21,6 +23,13 @@ interface TriagePatient {
   complianceScore: number | null
   recentFormScores: number[]
   nextAppointment: string | null
+}
+
+interface LiveData {
+  progress: number
+  reps: number
+  exerciseId: string
+  timestamp: number
 }
 
 const ICONS: Record<string, any> = { Users, FileText, CheckSquare, Activity }
@@ -92,7 +101,17 @@ function Sparkline({ scores }: { scores: number[] }) {
 /* ─────────────────────────────────────────────
    Triage Table component
 ───────────────────────────────────────────── */
-function TriageTable({ patients, loading }: { patients: TriagePatient[]; loading: boolean }) {
+function TriageTable({ 
+  patients, 
+  loading, 
+  livePatients,
+  onLiveClick 
+}: { 
+  patients: TriagePatient[]; 
+  loading: boolean;
+  livePatients: Record<string, LiveData>;
+  onLiveClick: (id: string) => void;
+}) {
   if (loading) {
     return (
       <div className="space-y-2">
@@ -129,15 +148,26 @@ function TriageTable({ patients, loading }: { patients: TriagePatient[]; loading
         <tbody className="divide-y divide-white/5">
           {patients.map((p) => (
             <tr key={p._id} className="hover:bg-white/[0.02] transition-colors group">
-              {/* Patient name + avatar */}
+              {/* Patient name + avatar + LIVE badge */}
               <td className="py-3.5 px-4">
                 <div className="flex items-center gap-3">
                   <div className="h-8 w-8 rounded-full bg-gradient-to-br from-violet-500/30 to-cyan-500/30 border border-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0">
                     {p.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-medium text-white leading-tight">{p.name}</p>
-                    <p className="text-[11px] text-white/30 leading-tight">{p.email}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-white leading-tight">{p.name}</p>
+                      {livePatients[p._id] && (
+                        <button 
+                          onClick={() => onLiveClick(p._id)}
+                          className="flex items-center gap-1 bg-red-500/20 text-red-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-red-500/30 animate-pulse hover:bg-red-500/30 transition-colors"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                          LIVE NOW
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-white/30 leading-tight mt-0.5">{p.email}</p>
                   </div>
                 </div>
               </td>
@@ -192,11 +222,15 @@ function TriageTable({ patients, loading }: { patients: TriagePatient[]; loading
    Main dashboard page
 ───────────────────────────────────────────── */
 export default function DoctorDashboard() {
-  const [dashboardData, setDashboardData]   = useState<any>(null)
+  const [dashboardData, setDashboardData] = useState<any>(null)
   const [triagePatients, setTriagePatients] = useState<TriagePatient[]>([])
-  const [statsLoading, setStatsLoading]     = useState(true)
-  const [triageLoading, setTriageLoading]   = useState(true)
-  const [actionItems, setActionItems]       = useState<any[]>([])
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [triageLoading, setTriageLoading] = useState(true)
+  const [actionItems, setActionItems] = useState<any[]>([])
+  
+  const [livePatients, setLivePatients] = useState<Record<string, LiveData>>({})
+  const [selectedLivePatientId, setSelectedLivePatientId] = useState<string | null>(null)
+  
   const router = useRouter()
 
   useEffect(() => {
@@ -206,7 +240,7 @@ export default function DoctorDashboard() {
 
       // Fetch stats + triage in parallel
       const [dashRes, triageRes] = await Promise.all([
-        fetch(`${API}/dashboard/doctor`,        { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/dashboard/doctor`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/dashboard/doctor/triage`, { headers: { Authorization: `Bearer ${token}` } }),
       ])
 
@@ -224,6 +258,55 @@ export default function DoctorDashboard() {
     }
     fetchAll().catch(console.error)
   }, [router])
+
+  // ── Pusher Telemetry Subscription ──
+  useEffect(() => {
+    const pusher = getPusherClient();
+    if (!pusher || triagePatients.length === 0) return;
+
+    // Subscribe to each patient's private session channel
+    const channels = triagePatients.map(p => {
+      const channelName = `session-${p._id}`;
+      const channel = pusher.subscribe(channelName);
+      
+      channel.bind('telemetry-update', (data: any) => {
+        setLivePatients(prev => ({
+          ...prev,
+          [data.patientId]: {
+            progress: data.progress,
+            reps: data.reps,
+            exerciseId: data.exerciseId,
+            timestamp: data.timestamp
+          }
+        }));
+      });
+      return channelName;
+    });
+
+    // Cleanup stale live sessions (no updates for 5s)
+    const cleanupInterval = setInterval(() => {
+      setLivePatients(prev => {
+        const now = Date.now();
+        const next = { ...prev };
+        let changed = false;
+        Object.keys(next).forEach(id => {
+          if (now - next[id].timestamp > 5000) {
+            delete next[id];
+            changed = true;
+            if (selectedLivePatientId === id) {
+              setSelectedLivePatientId(null);
+            }
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 2000);
+
+    return () => {
+      channels.forEach(ch => pusher.unsubscribe(ch));
+      clearInterval(cleanupInterval);
+    };
+  }, [triagePatients, selectedLivePatientId]);
 
   const markTaskComplete = useCallback(async (taskId: string) => {
     const token = localStorage.getItem('token')
@@ -249,28 +332,92 @@ export default function DoctorDashboard() {
         <p className="text-white/60 mt-1">Here's what is happening with your patients today.</p>
       </div>
 
+      {/* ── Live Patient Telemetry ── */}
+      <AnimatePresence>
+        {selectedLivePatientId && livePatients[selectedLivePatientId] && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, scale: 0.95 }}
+            animate={{ opacity: 1, height: 'auto', scale: 1 }}
+            exit={{ opacity: 0, height: 0, scale: 0.95 }}
+            className="overflow-hidden"
+          >
+            <GlassCard className="p-6 border-red-500/30 bg-black/40 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4">
+                <button 
+                  onClick={() => setSelectedLivePatientId(null)}
+                  className="text-white/40 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse"></div>
+                <h2 className="text-xl font-bold text-white">Live Telemetry Session</h2>
+                <span className="text-white/50 text-sm ml-2">
+                  {triagePatients.find(p => p._id === selectedLivePatientId)?.name}
+                </span>
+                <span className="text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded text-xs font-mono border border-cyan-500/20 ml-2">
+                  {livePatients[selectedLivePatientId].exerciseId}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Progress Bar */}
+                <div>
+                  <div className="flex justify-between items-end mb-2">
+                    <span className="text-sm font-medium text-white/60">Movement Progress</span>
+                    <span className="text-2xl font-bold text-blue-400">
+                      {livePatients[selectedLivePatientId].progress}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-neutral-900 rounded-full h-4 overflow-hidden border border-white/5">
+                    <div 
+                      className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out" 
+                      style={{ width: `${livePatients[selectedLivePatientId].progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Rep Counter */}
+                <div className="flex items-center gap-6">
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <Activity className="h-8 w-8 text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white/60">Completed Reps</p>
+                    <p className="text-4xl font-bold text-green-400">
+                      {livePatients[selectedLivePatientId].reps}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {statsLoading
           ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32" />)
           : dashboardData?.stats?.map((stat: any, i: number) => {
-              const Icon = ICONS[stat.iconName] || Users
-              return (
-                <GlassCard key={i} className="p-6 flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">{stat.title}</p>
-                    <p className="text-3xl font-bold text-white leading-none">{stat.value}</p>
-                    <div className="flex items-center gap-1 mt-2.5">
-                      <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
-                      <span className="text-emerald-400 text-xs font-semibold">Active</span>
-                    </div>
+            const Icon = ICONS[stat.iconName] || Users
+            return (
+              <GlassCard key={i} className="p-6 flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">{stat.title}</p>
+                  <p className="text-3xl font-bold text-white leading-none">{stat.value}</p>
+                  <div className="flex items-center gap-1 mt-2.5">
+                    <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                    <span className="text-emerald-400 text-xs font-semibold">Active</span>
                   </div>
-                  <div className={`p-2.5 rounded-xl border border-white/10 bg-white/5 ${stat.color}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                </GlassCard>
-              )
-            })}
+                </div>
+                <div className={`p-2.5 rounded-xl border border-white/10 bg-white/5 ${stat.color}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+              </GlassCard>
+            )
+          })}
       </div>
 
       {/* ── Patient Triage Table ── */}
@@ -290,7 +437,12 @@ export default function DoctorDashboard() {
           </Link>
         </div>
         <div className="px-2 py-2">
-          <TriageTable patients={triagePatients} loading={triageLoading} />
+          <TriageTable 
+            patients={triagePatients} 
+            loading={triageLoading} 
+            livePatients={livePatients}
+            onLiveClick={setSelectedLivePatientId}
+          />
         </div>
       </GlassCard>
 

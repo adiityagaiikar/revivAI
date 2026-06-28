@@ -18,6 +18,12 @@ __pycache__/
 .venv/
 venv/
 
+# ML model weights and large data files
+backend/*.pth
+backend/risk_dataset_real.csv
+backend/demographic.csv
+backend/examination.csv
+
 # OS generated files
 .DS_Store
 Thumbs.db".turbo" 

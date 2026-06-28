@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Settings, Camera, Mic, CheckCircle2, AlertTriangle,
   Video, VideoOff, ChevronDown, RefreshCw, Loader2,
+  Watch, Bluetooth, Smartphone
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 
@@ -128,6 +129,8 @@ export default function DeviceCalibrationPage() {
   const [microphones, setMicrophones]   = useState<MediaDeviceInfo[]>([])
   const [activeCamera, setActiveCamera] = useState<string>('')
   const [activeMic, setActiveMic]       = useState<string>('')
+  const [watchStatus, setWatchStatus]   = useState<'idle' | 'scanning' | 'found' | 'connected'>('idle')
+  const [activeWatch, setActiveWatch]   = useState<string>('')
   const [permission, setPermission]     = useState<PermissionState>('idle')
   const [testFeedOpen, setTestFeedOpen] = useState(false)
   const [feedLoading, setFeedLoading]   = useState(false)
@@ -430,11 +433,115 @@ export default function DeviceCalibrationPage() {
         )}
       </GlassCard>
 
+      {/* ── Smartwatch configuration ── */}
+      <GlassCard className="p-6 space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10">
+            <Watch className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-white">Smartwatch</h2>
+            <p className="text-[11px] text-white/35 mt-0.5">
+              {watchStatus === 'connected' ? 'Device connected' : 'Connect WearOS or Apple Watch for heart rate'}
+            </p>
+          </div>
+        </div>
+
+        {watchStatus === 'idle' && (
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            <div className="p-4 rounded-full border border-emerald-500/20 bg-emerald-500/5 mb-4">
+              <Bluetooth className="w-8 h-8 text-emerald-400/60" />
+            </div>
+            <p className="text-sm font-semibold text-white">No watch connected</p>
+            <p className="text-xs text-white/40 mt-1 mb-4">Pair your smartwatch via Bluetooth to sync heart rate and vitals.</p>
+            <button
+              onClick={() => {
+                setWatchStatus('scanning')
+                setTimeout(() => setWatchStatus('found'), 2000)
+              }}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 mx-auto rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 text-sm font-semibold transition-colors"
+            >
+              <Bluetooth className="w-4 h-4" /> Scan for Devices
+            </button>
+          </div>
+        )}
+
+        {watchStatus === 'scanning' && (
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mb-4" />
+            <p className="text-sm font-semibold text-white">Scanning for devices…</p>
+            <p className="text-xs text-white/40 mt-1">Make sure your watch is in pairing mode.</p>
+          </div>
+        )}
+
+        {watchStatus === 'found' && (
+          <div className="space-y-2">
+            <button
+              onClick={() => {
+                setActiveWatch('Apple Watch Series 9')
+                setWatchStatus('connected')
+              }}
+              className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 hover:border-white/15 transition-all text-left"
+            >
+              <div className="h-4 w-4 rounded-full border-2 border-white/25 shrink-0" />
+              <div className="p-2 rounded-lg border border-white/10 bg-white/5 text-white/40 shrink-0">
+                <Watch className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white/70">Apple Watch Series 9</p>
+                <p className="text-[11px] text-white/30 mt-0.5">Ready to pair</p>
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                setActiveWatch('Garmin Fenix 7')
+                setWatchStatus('connected')
+              }}
+              className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 hover:border-white/15 transition-all text-left"
+            >
+              <div className="h-4 w-4 rounded-full border-2 border-white/25 shrink-0" />
+              <div className="p-2 rounded-lg border border-white/10 bg-white/5 text-white/40 shrink-0">
+                <Watch className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white/70">Garmin Fenix 7</p>
+                <p className="text-[11px] text-white/30 mt-0.5">Ready to pair</p>
+              </div>
+            </button>
+          </div>
+        )}
+
+        {watchStatus === 'connected' && (
+          <div className="w-full flex items-center gap-4 p-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 transition-all text-left">
+            <div className="h-4 w-4 rounded-full border-2 border-emerald-400 shrink-0 flex items-center justify-center">
+              <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            </div>
+            <div className="p-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shrink-0">
+              <Watch className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white">{activeWatch}</p>
+              <p className="text-[11px] text-white/30 mt-0.5 font-mono">Connected • Syncing HR</p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setWatchStatus('idle')
+                setActiveWatch('')
+              }}
+              className="text-xs text-emerald-400 hover:text-emerald-300 px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 transition-colors shrink-0"
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </GlassCard>
+
       {/* ── Active configuration summary ── */}
-      {hasDevices && (
+      {(hasDevices || watchStatus === 'connected') && (
         <GlassCard className="p-5 border-cyan-500/15" style={{ borderColor: 'rgba(6,182,212,0.15)' }}>
           <p className="text-xs font-semibold text-white/20 uppercase tracking-widest mb-4">Active Configuration</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-white/3 border border-white/8">
               <Video className="w-4 h-4 text-cyan-400 shrink-0" />
               <div className="min-w-0">
@@ -453,6 +560,15 @@ export default function DeviceCalibrationPage() {
                 <p className="text-sm text-white font-medium truncate">
                   {microphones.find((m) => m.deviceId === activeMic)?.label ||
                     (microphones.length > 0 ? `Microphone ${microphones.findIndex((m) => m.deviceId === activeMic) + 1}` : '—')}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-white/3 border border-white/8">
+              <Watch className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] text-white/30 uppercase tracking-widest">Smartwatch</p>
+                <p className="text-sm text-white font-medium truncate">
+                  {watchStatus === 'connected' ? activeWatch : '—'}
                 </p>
               </div>
             </div>

@@ -61,6 +61,9 @@ export default function LungesPage() {
   const [err,     setErr]     = useState('')
   const [summary, setSummary] = useState<{ peakReps: number; minAngle: number; total: number } | null>(null)
 
+  const [currentLandmarks, setCurrentLandmarks] = useState<any>(null)
+  const lastLandmarkUpdate = useRef<number>(0)
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -141,6 +144,14 @@ export default function LungesPage() {
     }
 
     setStats({ reps: s.reps, angle: displayAngle, feedback, stage: s.stage ?? '' })
+    const now = Date.now()
+    if (now - lastLandmarkUpdate.current > 333) {
+      if (results.poseLandmarks || (results.landmarks && results.landmarks[0])) {
+        const marks = results.poseLandmarks || results.landmarks[0]
+        setCurrentLandmarks(marks)
+        lastLandmarkUpdate.current = now
+      }
+    }
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
@@ -188,6 +199,8 @@ export default function LungesPage() {
       onStart={handleStart}
       onStop={handleStop}
       onReset={handleReset}
+      wsEndpoint="ws://127.0.0.1:8000/ws"
+      landmarks={currentLandmarks}
       onDownload={() => downloadLog('lunges', JSON.parse(localStorage.getItem('lunges-session-log') ?? '[]'))}
       videoSlot={<video ref={videoRef} autoPlay playsInline muted className="hidden" />}
       canvasSlot={

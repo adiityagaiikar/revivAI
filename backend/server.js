@@ -24,8 +24,13 @@ mongoose.connect(MONGODB_URI)
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/user', require('./routes/userProfile'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/history', require('./routes/history'));
+app.use('/api/triage', require('./routes/triage'));
+app.use('/api/care-plan', require('./routes/carePlan'));
+app.use('/api/messages', require('./routes/messages'));
+app.use('/api/appointments', require('./routes/appointments'));
 
 // Setup Exercise WebSocket
 const setupExerciseWebSocket = require('./routes/exercise_ws');

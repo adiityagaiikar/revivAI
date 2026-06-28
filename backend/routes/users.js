@@ -19,9 +19,18 @@ function sanitizeSlugs(input, allowedSet) {
 // Get current authenticated user's profile
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user).select('name email username role');
+    const user = await User.findById(req.user).select('name email username role age weight height');
     if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json({ id: user._id, name: user.name, email: user.email, username: user.username, role: user.role });
+    res.json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      age: user.age ?? null,
+      weight: user.weight ?? null,
+      height: user.height ?? null,
+    });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -41,14 +50,14 @@ router.get('/associations', auth, async (req, res) => {
       // Find all patients who have this doctor in their assignedDoctors array
       const patients = await User.find({
         role: 'patient',
-        assignedDoctors: user._id
+        assignedDoctor: user._id
       }).select('-password');
       
       return res.json({ role: 'doctor', patients });
     } else {
       // Find all doctors assigned to this patient
-      await user.populate('assignedDoctors', '-password');
-      return res.json({ role: 'patient', doctors: user.assignedDoctors });
+      await user.populate('assignedDoctor', '-password');
+      return res.json({ role: 'patient', doctors: user.assignedDoctor ? [user.assignedDoctor] : [] });
     }
   } catch (error) {
     console.error('Fetch associations error:', error);
@@ -66,7 +75,7 @@ router.get('/doctor/patients/:patientId/plan', auth, async (req, res) => {
     const patient = await User.findOne({
       _id: req.params.patientId,
       role: 'patient',
-      assignedDoctors: doctor._id,
+      assignedDoctor: doctor._id,
     }).select('doctorPersonalizationEnabled assignedExerciseSlugs assignedCognitiveGameSlugs name email');
     if (!patient) {
       return res.status(404).json({ error: 'Patient not found or not assigned to you.' });
@@ -95,7 +104,7 @@ router.patch('/doctor/patients/:patientId/plan', auth, async (req, res) => {
     const patient = await User.findOne({
       _id: req.params.patientId,
       role: 'patient',
-      assignedDoctors: doctor._id,
+      assignedDoctor: doctor._id,
     });
     if (!patient) {
       return res.status(404).json({ error: 'Patient not found or not assigned to you.' });
@@ -124,6 +133,42 @@ router.patch('/doctor/patients/:patientId/plan', auth, async (req, res) => {
   }
 });
 
+// Doctor: update a patient's next appointment timestamp
+router.patch('/doctor/patients/:patientId/next-appointment', auth, async (req, res) => {
+  try {
+    const doctor = await User.findById(req.user);
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(403).json({ error: 'Doctors only.' });
+    }
+
+    const patient = await User.findOne({
+      _id: req.params.patientId,
+      role: 'patient',
+      assignedDoctor: doctor._id,
+    });
+    if (!patient) {
+      return res.status(404).json({ error: 'Patient not found or not assigned to you.' });
+    }
+
+    const { nextAppointment } = req.body;
+    if (nextAppointment === null || nextAppointment === '') {
+      patient.nextAppointment = null;
+    } else {
+      const scheduledAt = new Date(nextAppointment);
+      if (Number.isNaN(scheduledAt.getTime())) {
+        return res.status(400).json({ error: 'Invalid nextAppointment value.' });
+      }
+      patient.nextAppointment = scheduledAt;
+    }
+
+    await patient.save();
+    res.json({ patientId: patient._id, nextAppointment: patient.nextAppointment });
+  } catch (error) {
+    console.error('Update next appointment error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Doctor: get patient's OCR-extracted medical history
 router.get('/doctor/patients/:patientId/medical-history', auth, async (req, res) => {
   try {
@@ -134,7 +179,7 @@ router.get('/doctor/patients/:patientId/medical-history', auth, async (req, res)
     const patient = await User.findOne({
       _id: req.params.patientId,
       role: 'patient',
-      assignedDoctors: doctor._id,
+      assignedDoctor: doctor._id,
     }).select('medicalHistory name');
     if (!patient) {
       return res.status(404).json({ error: 'Patient not found or not assigned to you.' });

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Dumbbell, Activity, Brain,
-  BarChart3, LogOut, Calendar, MessageSquare, Settings,
+  BarChart3, LogOut, Calendar, MessageSquare, Settings, UserCircle2,
 } from 'lucide-react'
 import { cn } from '@workspace/ui/lib/utils'
 import { useAuth } from '@/lib/AuthContext'
@@ -12,6 +12,7 @@ import { AuthGuard } from '@/components/AuthGuard'
 
 const menuItems = [
   { name: 'Dashboard',         href: '/dashboard',         icon: LayoutDashboard },
+  { name: 'Profile',           href: '/profile',           icon: UserCircle2 },
   { name: 'Fitness Assistant', href: '/fitness-assistant', icon: Dumbbell },
   { name: 'Exercises',         href: '/exercises',         icon: Activity },
   { name: 'Cognitive Games',   href: '/cognitive-games',   icon: Brain },
@@ -92,8 +93,8 @@ function PatientSidebar() {
 
       {/* User profile + logout */}
       <div className="p-4 border-t border-white/8 space-y-2">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/8">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shrink-0 text-sm font-bold text-white">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/3 border border-white/8">
+          <div className="w-9 h-9 rounded-full bg-linear-to-br from-violet-500 to-cyan-500 flex items-center justify-center shrink-0 text-sm font-bold text-white">
             {loading ? <Skeleton className="w-9 h-9 rounded-full" /> : (avatarLetter || '?')}
           </div>
           <div className="flex-1 min-w-0">

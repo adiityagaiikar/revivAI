@@ -11,6 +11,7 @@
  *  - Instructions panel (right column)
  *  - Optional session summary card
  *  - Optional score popup (rep flash)
+ *  - Fatigue & anomaly warning banners (above Session Summary)
  */
 
 import { useRef, useCallback, useState, useEffect, type CSSProperties, type ReactNode } from 'react'
@@ -27,18 +28,19 @@ import Link from 'next/link'
    Types
 ───────────────────────────────────────────── */
 export interface ExerciseStats {
-  reps:      number
-  angle:     number
-  feedback:  string
-  stage?:    string
+  reps: number
+  angle: number
+  feedback: string
+  stage?: string
   holdFrames?: number
 }
 
 export interface SessionSummary {
-  peakReps:  number
+  peakReps: number
   minAngle?: number
   peakHold?: number
-  total:     number
+  total: number
+  recoveryWeeks?: number | null
 }
 
 export interface InstructionTip {
@@ -48,14 +50,14 @@ export interface InstructionTip {
 export interface ExerciseShellProps {
   /* identity */
   exerciseName: string
-  description:  string
+  description: string
   accentColor?: 'violet' | 'cyan' | 'emerald' | 'amber'
 
   /* state */
-  ready:    boolean
-  running:  boolean
-  stats:    ExerciseStats
-  error?:   string
+  ready: boolean
+  running: boolean
+  stats: ExerciseStats
+  error?: string
   summary?: SessionSummary | null
   scorePopup?: string | null
   debriefStatus?: 'idle' | 'loading' | 'ready'
@@ -63,38 +65,45 @@ export interface ExerciseShellProps {
 
   /* content */
   instructions: string[]
-  tips?:        string[]
-  demoGif?:     string
-  extraStats?:  { label: string; value: string | number }[]
+  tips?: string[]
+  demoGif?: string
+  extraStats?: { label: string; value: string | number }[]
 
   /* callbacks */
-  onStart:  () => void
-  onStop:   () => void
-  onReset:  () => void
+  onStart: () => void
+  onStop: () => void
+  onReset: () => void
   onDownload?: () => void
 
   /* video / canvas refs passed in from parent */
-  videoSlot:  ReactNode   // <video ref={...} /> hidden element
-  canvasSlot: ReactNode   // <canvas ref={...} /> — the visible drawing surface
+  videoSlot: ReactNode
+  canvasSlot: ReactNode
   extraControls?: ReactNode
+
+  /* WebSocket AI recovery — optional */
+  wsEndpoint?: string
+  landmarks?: { x: number; y: number; z: number }[]
+  demographics?: { age?: number | null; weight?: number | null }
 }
 
 /* ─────────────────────────────────────────────
    Accent palette
 ───────────────────────────────────────────── */
 const ACCENT = {
-  violet:  { ring: 'ring-violet-500/30', glow: 'shadow-violet-900/40', icon: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/30', spin: 'border-violet-500' },
-  cyan:    { ring: 'ring-cyan-500/30',   glow: 'shadow-cyan-900/40',   icon: 'text-cyan-400',   bg: 'bg-cyan-500/10',   border: 'border-cyan-500/30',   spin: 'border-cyan-500'   },
-  emerald: { ring: 'ring-emerald-500/30',glow: 'shadow-emerald-900/40',icon: 'text-emerald-400',bg: 'bg-emerald-500/10',border: 'border-emerald-500/30',spin: 'border-emerald-500'},
-  amber:   { ring: 'ring-amber-500/30',  glow: 'shadow-amber-900/40',  icon: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30',  spin: 'border-amber-500'  },
+  violet: { ring: 'ring-violet-500/30', glow: 'shadow-violet-900/40', icon: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/30', spin: 'border-violet-500' },
+  cyan:   { ring: 'ring-cyan-500/30',   glow: 'shadow-cyan-900/40',   icon: 'text-cyan-400',   bg: 'bg-cyan-500/10',   border: 'border-cyan-500/30',   spin: 'border-cyan-500'   },
+  emerald:{ ring: 'ring-emerald-500/30',glow: 'shadow-emerald-900/40',icon: 'text-emerald-400',bg: 'bg-emerald-500/10',border: 'border-emerald-500/30',spin: 'border-emerald-500'},
+  amber:  { ring: 'ring-amber-500/30',  glow: 'shadow-amber-900/40',  icon: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30',  spin: 'border-amber-500'  },
 }
+
+const glassControlButtonClass =
+  'flex items-center gap-2 px-6 py-2 rounded-lg bg-white/5 border border-white/10 text-white font-medium backdrop-blur-md hover:bg-white/10 hover:border-white/20 transition-all duration-200'
 
 /* ─────────────────────────────────────────────
    Spring button primitive
 ───────────────────────────────────────────── */
 function SpringBtn({
-  onClick, disabled = false, children, className = '',
-  style,
+  onClick, disabled = false, children, className = '', style,
 }: {
   onClick: () => void
   disabled?: boolean
@@ -105,7 +114,7 @@ function SpringBtn({
   return (
     <motion.button
       whileHover={disabled ? {} : { scale: 1.05 }}
-      whileTap={disabled  ? {} : { scale: 0.95 }}
+      whileTap={disabled ? {} : { scale: 0.95 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       onClick={onClick}
       disabled={disabled}
@@ -126,37 +135,99 @@ export default function ExerciseShell({
   instructions, tips, demoGif, extraStats,
   onStart, onStop, onReset, onDownload,
   videoSlot, canvasSlot, extraControls,
+  wsEndpoint, landmarks, demographics,
 }: ExerciseShellProps) {
   const ac = ACCENT[accentColor]
-  
   const isGoodFeedback = stats.feedback.startsWith('✓')
 
-  // Form Score calculation
-  const formScore = calculateFormScore(stats.angle, exerciseName);
-  const scoreColor = getScoreColor(formScore);
+  const formScore = calculateFormScore(stats.angle, exerciseName)
+  const scoreColor = getScoreColor(formScore)
 
-  // Auto-resolve GIF from catalog
   const catalogMatch = ALL_EXERCISES.find(e => e.name === exerciseName)
   const resolvedDemoGif = demoGif || catalogMatch?.gifUrl
 
-  // Perfect Rep Flare logic
-  const [perfectRepFlare, setPerfectRepFlare] = useState(false);
-  const lastRepRef = useRef(stats.reps);
-  const perfectTriggeredRef = useRef(false);
+  // Perfect Rep Flare
+  const [perfectRepFlare, setPerfectRepFlare] = useState(false)
+  const lastRepRef = useRef(stats.reps)
+  const perfectTriggeredRef = useRef(false)
+
+  // ── WebSocket state ──────────────────────────────────────────────────────
+  const [recoveryWeeks, setRecoveryWeeks]   = useState<number | null>(null)
+  const [fatigueIndex,  setFatigueIndex]    = useState<number | null>(null)
+  const [anomalyAlert,  setAnomalyAlert]    = useState<boolean>(false)
+
+  const wsRef            = useRef<WebSocket | null>(null)
+  const frameBufferRef   = useRef<number[][]>([])
+  const lastCaptureTime  = useRef<number>(0)
+
+  // WebSocket lifecycle
+  useEffect(() => {
+    if (!wsEndpoint) return
+    const ws = new WebSocket(wsEndpoint)
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (typeof data.recovery_weeks === 'number') setRecoveryWeeks(data.recovery_weeks)
+        if (data.fatigue_index !== undefined)         setFatigueIndex(data.fatigue_index)
+        if (data.anomaly_alert !== undefined)         setAnomalyAlert(data.anomaly_alert)
+
+        // Silent fire-and-forget telemetry broadcast — does not affect UI or WS state
+        fetch('/api/telemetry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId: 'patient_aditya_1',
+            eventType: 'live-telemetry',
+            data: {
+              recovery_weeks: data.recovery_weeks,
+              fatigue_index:  data.fatigue_index,
+              anomaly_alert:  data.anomaly_alert,
+            },
+          }),
+        }).catch(err => console.error('Telemetry silent fail:', err))
+      } catch {
+        // ignore malformed messages
+      }
+    }
+    wsRef.current = ws
+    return () => { ws.close(); wsRef.current = null }
+  }, [wsEndpoint])
+
+  // Capture loop — fires whenever landmarks update
+  useEffect(() => {
+    if (!wsEndpoint || !landmarks || landmarks.length !== 33) return
+    const now = Date.now()
+    if (now - lastCaptureTime.current <= 333) return
+
+    const flat = landmarks.flatMap(lm => [lm.x, lm.y, lm.z])
+    frameBufferRef.current.push(flat)
+    lastCaptureTime.current = now
+
+    if (frameBufferRef.current.length === 10) {
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          frames: frameBufferRef.current,
+          age:    demographics?.age    ?? 25,
+          weight: demographics?.weight ?? 70.0,
+        }))
+      }
+      frameBufferRef.current = []
+    }
+  }, [landmarks, wsEndpoint, demographics])
+  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (stats.reps !== lastRepRef.current) {
-      lastRepRef.current = stats.reps;
-      perfectTriggeredRef.current = false;
+      lastRepRef.current = stats.reps
+      perfectTriggeredRef.current = false
     }
-
     if (running && formScore === 100 && !perfectTriggeredRef.current) {
-      perfectTriggeredRef.current = true;
-      setPerfectRepFlare(true);
-      setTimeout(() => setPerfectRepFlare(false), 800);
+      perfectTriggeredRef.current = true
+      setPerfectRepFlare(true)
+      setTimeout(() => setPerfectRepFlare(false), 800)
     }
-  }, [formScore, stats.reps, running]);
-
+  }, [formScore, stats.reps, running])
 
   return (
     <div className="space-y-6" style={{ fontFamily: "var(--font-sans, 'Inter', sans-serif)" }}>
@@ -202,10 +273,7 @@ export default function ExerciseShell({
           {/* Video container */}
           <div className="relative aspect-video rounded-xl overflow-hidden bg-black">
 
-            {/* Hidden video element (parent passes this) */}
             {videoSlot}
-
-            {/* Canvas / AI frame */}
             {canvasSlot}
 
             {/* Idle placeholder */}
@@ -221,7 +289,7 @@ export default function ExerciseShell({
                 >
                   {!ready ? (
                     <>
-                      <div className={`relative h-12 w-12`}>
+                      <div className="relative h-12 w-12">
                         <div className={`absolute inset-0 rounded-full border-2 ${ac.border} animate-ping opacity-40`} />
                         <div className={`h-12 w-12 rounded-full border-2 ${ac.spin} border-t-transparent animate-spin`} />
                       </div>
@@ -280,7 +348,6 @@ export default function ExerciseShell({
               )}
             </AnimatePresence>
 
-            
             {/* ── Form Score Bar (right side) ── */}
             <AnimatePresence>
               {running && (
@@ -294,7 +361,7 @@ export default function ExerciseShell({
                 >
                   <span className="text-white/60 text-[8px] font-bold tracking-widest absolute top-4">SCORE</span>
                   <div className="w-2 bg-white/10 rounded-full flex-1 mx-auto my-6 relative overflow-hidden flex flex-col justify-end">
-                    <motion.div 
+                    <motion.div
                       className="w-full rounded-full transition-colors duration-300"
                       animate={{ height: `${formScore}%`, backgroundColor: scoreColor }}
                       transition={{ type: 'spring', stiffness: 100, damping: 15 }}
@@ -306,7 +373,6 @@ export default function ExerciseShell({
             </AnimatePresence>
 
             {/* ── Live badge (top-right, shifted left) ── */}
-
             <AnimatePresence>
               {running && (
                 <motion.div
@@ -367,7 +433,7 @@ export default function ExerciseShell({
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          </div>{/* end video container */}
 
           {/* ── AI debrief ── */}
           <AnimatePresence>
@@ -412,7 +478,7 @@ export default function ExerciseShell({
                 onClick={onStart}
                 disabled={!ready}
                 className={`${ac.bg} ${ac.border} border ${ac.icon} hover:opacity-90`}
-                style={{ boxShadow: ready ? `0 0 20px rgba(139,92,246,0.25)` : 'none' } as any}
+                style={{ boxShadow: ready ? '0 0 20px rgba(139,92,246,0.25)' : 'none' } as CSSProperties}
               >
                 <Play className="h-4 w-4" />
                 {ready ? 'Start AI Analysis' : 'Loading model…'}
@@ -427,13 +493,29 @@ export default function ExerciseShell({
               </SpringBtn>
             )}
 
-            <SpringBtn
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
               onClick={onReset}
-              className="bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-white/10"
+              className={glassControlButtonClass}
             >
               <RotateCcw className="h-4 w-4" />
               Reset
-            </SpringBtn>
+            </motion.button>
+
+            {onDownload && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                onClick={onDownload}
+                className={glassControlButtonClass}
+              >
+                <Download className="h-4 w-4" />
+                Export
+              </motion.button>
+            )}
 
             {extraControls}
           </div>
@@ -449,11 +531,27 @@ export default function ExerciseShell({
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                 className="rounded-xl border border-white/10 bg-white/3 backdrop-blur-md p-5"
               >
+
+                {/* ── Danger warning banners (above the summary grid) ── */}
+                <div className="flex flex-col gap-2 mb-4">
+                  {fatigueIndex !== null && fatigueIndex > 85 && (
+                    <div className="w-full px-4 py-3 rounded-xl border border-red-500/50 bg-red-500/10 backdrop-blur-md text-red-400 text-sm font-medium">
+                      ⚠️ Muscle Fatigue Detected: Form degrading ({fatigueIndex.toFixed(0)}%). Terminate set to prevent injury.
+                    </div>
+                  )}
+                  {anomalyAlert && (
+                    <div className="w-full px-4 py-3 rounded-xl border border-yellow-500/50 bg-yellow-500/10 backdrop-blur-md text-yellow-400 text-sm font-medium">
+                      ⚡ Kinematic Anomaly Detected: Check spinal alignment and joint trajectory.
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Summary grid ── */}
                 <div className="flex items-center gap-2 mb-4">
                   <Zap className={`h-4 w-4 ${ac.icon}`} />
                   <h3 className="text-white font-semibold text-sm">Session Summary</h3>
                 </div>
-                <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="grid grid-cols-4 gap-4 text-center">
                   <div>
                     <p className={`text-2xl font-bold ${ac.icon}`}>{summary.peakReps}</p>
                     <p className="text-xs text-white/35 mt-1">Peak Reps</p>
@@ -474,7 +572,16 @@ export default function ExerciseShell({
                     <p className="text-2xl font-bold text-white/60">{summary.total}</p>
                     <p className="text-xs text-white/35 mt-1">Frames</p>
                   </div>
+                  <div>
+                    <p className="text-2xl font-bold text-cyan-300">
+                      {(summary.recoveryWeeks != null ? summary.recoveryWeeks : recoveryWeeks) != null
+                        ? `${(summary.recoveryWeeks ?? recoveryWeeks)!.toFixed(1)} Wks`
+                        : 'Analyzing...'}
+                    </p>
+                    <p className="text-xs text-white/35 mt-1">Recovery</p>
+                  </div>
                 </div>
+
                 {onDownload && (
                   <SpringBtn
                     onClick={onDownload}
@@ -487,7 +594,8 @@ export default function ExerciseShell({
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+
+        </div>{/* end video card */}
 
         {/* ══ Instructions panel ══ */}
         <div className="rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-6 flex flex-col gap-5">
@@ -540,7 +648,8 @@ export default function ExerciseShell({
             </div>
           )}
         </div>
-      </div>
+
+      </div>{/* end main grid */}
     </div>
   )
 }

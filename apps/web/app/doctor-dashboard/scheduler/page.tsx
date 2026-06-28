@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Calendar, Bell, Plus, Clock, User, AlertCircle,
   Video, CheckCircle2, Loader2, RefreshCw, Zap,
@@ -227,9 +227,22 @@ export default function SchedulerPage() {
   const [showModal, setShowModal]       = useState(false)
   const [rescheduling, setRescheduling] = useState<string | number | null>(null)
   const [newAppt, setNewAppt]           = useState({ patientName: '', date: '', time: '', type: 'Video Consult' })
+  const [savedAppts, setSavedAppts]     = useState<Appointment[]>([])
 
-  /* ── Extra manual appointments (local state) ── */
-  const [manualAppts, setManualAppts]   = useState<Appointment[]>([])
+  const fetchAppointments = useCallback(async () => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    try {
+      const res = await fetch(`${API}/appointments`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        setSavedAppts(await res.json())
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
 
   /* ── Fetch live triage data ── */
   const fetchTriage = async () => {
@@ -249,7 +262,10 @@ export default function SchedulerPage() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchTriage() }, [])
+  useEffect(() => {
+    fetchTriage()
+    fetchAppointments()
+  }, [fetchAppointments])
 
   /* ── Derive appointments from live patients (those with nextAppointment set) ── */
   const liveAppts: Appointment[] = useMemo(() =>
@@ -269,9 +285,9 @@ export default function SchedulerPage() {
 
   /* ── Merge live + manual, sort chronologically ── */
   const allAppointments: Appointment[] = useMemo(() =>
-    [...liveAppts, ...manualAppts]
+    [...liveAppts, ...savedAppts]
       .sort((a, b) => new Date(`${a.date} ${a.time}`).getTime() - new Date(`${b.date} ${b.time}`).getTime()),
-    [liveAppts, manualAppts]
+    [liveAppts, savedAppts]
   )
 
   /* ── Derive cloud alerts from compliance scores ── */
@@ -286,11 +302,44 @@ export default function SchedulerPage() {
     setDismissedAlerts((prev) => new Set([...prev, id]))
   }
 
-  const handleCancel = (id: string | number) => {
-    // Live appointments can't be deleted locally — just remove from view
-    setManualAppts((prev) => prev.filter((a) => a.id !== id))
-    // For live ones, just filter them out of the merged list via a dismissed set
-    // (we don't mutate the DB here — that's a future backend action)
+  const handleCancel = async (id: string | number) => {
+    const appt = allAppointments.find((item) => item.id === id)
+    if (appt?.isLive && appt.patientId) {
+      const token = localStorage.getItem('token')
+      if (!token) return
+
+      try {
+        const res = await fetch(`${API}/users/doctor/patients/${encodeURIComponent(appt.patientId)}/next-appointment`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ nextAppointment: null }),
+        })
+        if (res.ok) {
+          await fetchTriage()
+        }
+      } catch (err) {
+        console.error(err)
+      }
+      return
+    }
+
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    try {
+      const res = await fetch(`${API}/appointments/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        await fetchAppointments()
+      }
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   const handleReschedule = (id: string | number) => {
@@ -300,23 +349,59 @@ export default function SchedulerPage() {
     if (appt) setNewAppt({ patientName: appt.patientName, date: appt.date, time: appt.time, type: appt.type })
   }
 
-  const handleSchedule = (e: React.FormEvent) => {
+  const handleSchedule = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newAppt.patientName || !newAppt.date || !newAppt.time) return
 
-    if (rescheduling) {
-      // Update existing manual appointment
-      setManualAppts((prev) =>
-        prev.map((a) => a.id === rescheduling ? { ...a, ...newAppt } : a)
-      )
-    } else {
-      // Add new manual appointment
-      setManualAppts((prev) => [...prev, { id: Date.now(), ...newAppt }])
-    }
+    const token = localStorage.getItem('token')
+    if (!token) return
 
-    setShowModal(false)
-    setRescheduling(null)
-    setNewAppt({ patientName: '', date: '', time: '', type: 'Video Consult' })
+    const existingAppt = rescheduling ? allAppointments.find((item) => item.id === rescheduling) : null
+    const nextAppointment = new Date(`${newAppt.date}T${newAppt.time}:00`).toISOString()
+
+    try {
+      if (existingAppt?.isLive && existingAppt.patientId) {
+        const response = await fetch(`${API}/users/doctor/patients/${encodeURIComponent(existingAppt.patientId)}/next-appointment`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ nextAppointment }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to save appointment')
+        }
+
+        await fetchTriage()
+      } else {
+        const response = await fetch(
+          rescheduling ? `${API}/appointments/${encodeURIComponent(String(rescheduling))}` : `${API}/appointments`,
+          {
+            method: rescheduling ? 'PATCH' : 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...newAppt,
+            }),
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error('Failed to save appointment')
+        }
+
+        await fetchAppointments()
+      }
+      setShowModal(false)
+      setRescheduling(null)
+      setNewAppt({ patientName: '', date: '', time: '', type: 'Video Consult' })
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   /* ── Upcoming vs past split ── */

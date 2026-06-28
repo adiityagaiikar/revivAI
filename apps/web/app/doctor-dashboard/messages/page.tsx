@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   MessageSquare, Send, Video, Search,
-  Loader2, CheckCheck, Clock,
+  Loader2, CheckCheck, RefreshCw,
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { API } from '@/lib/api'
@@ -21,51 +21,11 @@ interface Patient {
 }
 
 interface ChatMessage {
-  id: string
-  sender: 'doctor' | 'patient'
+  _id: string
+  sender: { _id: string; name: string; role: string }
+  receiver: { _id: string; name: string; role: string }
   text: string
-  time: string
-  read: boolean
-}
-
-interface Conversation {
-  patientId: string
-  messages: ChatMessage[]
-}
-
-/* ─────────────────────────────────────────────
-   Seed dummy chat history per patient
-───────────────────────────────────────────── */
-const DOCTOR_REPLIES = [
-  "I've reviewed your latest session data. Your form scores are improving — keep it up.",
-  "Please make sure you're completing the warm-up stretches before each exercise.",
-  "I've adjusted your plan. You'll see updated exercises in your app now.",
-  "Your range-of-motion data looks promising this week. Let's push a bit further.",
-  "If the discomfort persists after today's session, reduce reps by half and message me.",
-]
-
-const PATIENT_OPENERS = [
-  "Hi Doctor, my knee felt a bit stiff during today's squats.",
-  "Hello, I completed all my exercises today. Feeling good!",
-  "Doctor, I had some pain during the lunges. Should I stop?",
-  "Hi, just checking in. My compliance score dropped — is that normal?",
-  "Good morning! Ready for today's session. Any new instructions?",
-]
-
-function seedConversation(patient: Patient, index: number): ChatMessage[] {
-  const opener  = PATIENT_OPENERS[index % PATIENT_OPENERS.length]
-  const reply   = DOCTOR_REPLIES[index % DOCTOR_REPLIES.length]
-  const now     = new Date()
-  const t = (offsetMin: number) =>
-    new Date(now.getTime() - offsetMin * 60000).toLocaleTimeString('en-US', {
-      hour: '2-digit', minute: '2-digit',
-    })
-  return [
-    { id: `${patient._id}-1`, sender: 'patient', text: opener,  time: t(47), read: true },
-    { id: `${patient._id}-2`, sender: 'doctor',  text: reply,   time: t(40), read: true },
-    { id: `${patient._id}-3`, sender: 'patient', text: "Thank you, Doctor. I'll follow your advice.", time: t(38), read: true },
-    { id: `${patient._id}-4`, sender: 'doctor',  text: "Great. Keep logging your sessions and I'll check in tomorrow.", time: t(30), read: true },
-  ]
+  timestamp: string
 }
 
 /* ─────────────────────────────────────────────
@@ -75,15 +35,13 @@ function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-white/8 ${className}`} />
 }
 
-function getTime(): string {
-  return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+function getTime(isoString?: string): string {
+  const d = isoString ? new Date(isoString) : new Date()
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 
-function latestMessage(msgs: ChatMessage[]): string {
-  if (!msgs.length) return 'No messages yet'
-  const last = msgs[msgs.length - 1]
-  const prefix = last.sender === 'doctor' ? 'You: ' : ''
-  return prefix + (last.text.length > 42 ? last.text.slice(0, 42) + '…' : last.text)
+function getToken(): string | null {
+  return typeof window !== 'undefined' ? localStorage.getItem('token') : null
 }
 
 /* ─────────────────────────────────────────────
@@ -108,28 +66,25 @@ function TypingIndicator() {
 }
 
 /* ─────────────────────────────────────────────
-   Custom tooltip for recharts (unused here but
-   keeping import clean)
-───────────────────────────────────────────── */
-
-/* ─────────────────────────────────────────────
    Left pane — inbox list item
 ───────────────────────────────────────────── */
 function InboxItem({
   patient,
-  messages,
+  lastMsg,
   isActive,
   unread,
   onClick,
 }: {
   patient: Patient
-  messages: ChatMessage[]
+  lastMsg: ChatMessage | null
   isActive: boolean
   unread: number
   onClick: () => void
 }) {
-  const last = messages[messages.length - 1]
-  const preview = latestMessage(messages)
+  const preview = lastMsg
+    ? (lastMsg.sender.role === 'doctor' ? 'You: ' : '') +
+      (lastMsg.text.length > 42 ? lastMsg.text.slice(0, 42) + '…' : lastMsg.text)
+    : 'No messages yet'
 
   return (
     <button
@@ -148,7 +103,6 @@ function InboxItem({
           : 'bg-white/8 border border-white/10 text-white/60'
       }`}>
         {patient.name.charAt(0)}
-        {/* Online dot */}
         <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 border-2 border-[#050505]" />
       </div>
 
@@ -158,8 +112,8 @@ function InboxItem({
           <p className={`text-sm font-semibold truncate ${isActive ? 'text-white' : 'text-white/80'}`}>
             {patient.name}
           </p>
-          {last && (
-            <span className="text-[10px] text-white/25 shrink-0">{last.time}</span>
+          {lastMsg && (
+            <span className="text-[10px] text-white/25 shrink-0">{getTime(lastMsg.timestamp)}</span>
           )}
         </div>
         <p className="text-xs text-white/35 truncate mt-0.5">{preview}</p>
@@ -178,33 +132,31 @@ function InboxItem({
 /* ─────────────────────────────────────────────
    Right pane — chat bubble
 ───────────────────────────────────────────── */
-function ChatBubble({ msg }: { msg: ChatMessage }) {
-  const isDoctor = msg.sender === 'doctor'
+function ChatBubble({ msg, myId }: { msg: ChatMessage; myId: string }) {
+  const isMe = msg.sender._id === myId
   return (
-    <div className={`flex items-end gap-2 ${isDoctor ? 'flex-row-reverse' : ''}`}>
+    <div className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
       <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mb-1 ${
-        isDoctor
+        isMe
           ? 'bg-gradient-to-br from-cyan-500/50 to-violet-500/50 border border-cyan-500/30 text-white'
           : 'bg-white/8 border border-white/10 text-white/60'
       }`}>
-        {isDoctor ? 'Dr' : 'P'}
+        {isMe ? 'Dr' : 'P'}
       </div>
 
       {/* Bubble + time */}
-      <div className={`max-w-[68%] flex flex-col gap-1 ${isDoctor ? 'items-end' : 'items-start'}`}>
+      <div className={`max-w-[68%] flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
         <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-          isDoctor
+          isMe
             ? 'rounded-br-sm bg-gradient-to-br from-cyan-500 to-cyan-600 text-white'
             : 'rounded-bl-sm bg-white/8 border border-white/10 text-white/85'
         }`}>
           {msg.text}
         </div>
-        <div className={`flex items-center gap-1 px-1 ${isDoctor ? 'flex-row-reverse' : ''}`}>
-          <span className="text-[10px] text-white/25">{msg.time}</span>
-          {isDoctor && (
-            <CheckCheck className="h-3 w-3 text-cyan-400/60" />
-          )}
+        <div className={`flex items-center gap-1 px-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+          <span className="text-[10px] text-white/25">{getTime(msg.timestamp)}</span>
+          {isMe && <CheckCheck className="h-3 w-3 text-cyan-400/60" />}
         </div>
       </div>
     </div>
@@ -215,41 +167,50 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
    Main page
 ───────────────────────────────────────────── */
 export default function MessagesPage() {
-  const [patients, setPatients]           = useState<Patient[]>([])
-  const [loading, setLoading]             = useState(true)
-  const [searchQuery, setSearchQuery]     = useState('')
-  const [activeId, setActiveId]           = useState<string | null>(null)
-  const [conversations, setConversations] = useState<Record<string, ChatMessage[]>>({})
-  const [input, setInput]                 = useState('')
-  const [isTyping, setIsTyping]           = useState(false)
-  const [unreadCounts, setUnreadCounts]   = useState<Record<string, number>>({})
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const router    = useRouter()
+  const [myId, setMyId] = useState<string | null>(null)
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeId, setActiveId] = useState<string | null>(null)
 
-  /* ── Fetch patients from triage endpoint ── */
+  // messages per patient: { patientId -> ChatMessage[] }
+  const [threads, setThreads] = useState<Record<string, ChatMessage[]>>({})
+  const [threadLoading, setThreadLoading] = useState(false)
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const router = useRouter()
+
+  /* ── Auto-scroll on new messages ── */
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [threads, activeId])
+
+  /* ── Fetch my id + patients on mount ── */
   useEffect(() => {
     const run = async () => {
-      const token = localStorage.getItem('token')
+      const token = getToken()
       if (!token) { router.push('/login'); return }
+
       try {
+        // Get authenticated doctor's ID
+        const meRes = await fetch(`${API}/users/me`, { headers: { Authorization: `Bearer ${token}` } })
+        if (meRes.ok) {
+          const me = await meRes.json()
+          setMyId(me.id ?? me._id)
+        }
+
+        // Get patients (triage endpoint returns assigned patients)
         const res = await fetch(`${API}/dashboard/doctor/triage`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (res.ok) {
           const data: Patient[] = await res.json()
           setPatients(data)
-
-          // Seed a conversation for each patient
-          const convos: Record<string, ChatMessage[]> = {}
-          const unreads: Record<string, number> = {}
-          data.forEach((p, i) => {
-            convos[p._id]  = seedConversation(p, i)
-            unreads[p._id] = i === 0 ? 0 : 1   // first patient already "read"
-          })
-          setConversations(convos)
-          setUnreadCounts(unreads)
-
-          // Auto-select first patient
           if (data.length > 0) setActiveId(data[0]._id)
         }
       } catch (err) { console.error(err) }
@@ -258,65 +219,118 @@ export default function MessagesPage() {
     run()
   }, [router])
 
-  /* ── Auto-scroll on new messages ── */
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversations, activeId, isTyping])
+  /* ── Fetch thread for active patient ── */
+  const fetchThread = useCallback(async (patientId: string, silent = false) => {
+    const token = getToken()
+    if (!token || !patientId) return
+    if (!silent) setThreadLoading(true)
+    try {
+      const res = await fetch(`${API}/messages/${patientId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      const msgs: ChatMessage[] = data.messages ?? []
 
-  /* ── Mark as read when switching to a conversation ── */
-  const selectPatient = useCallback((id: string) => {
-    setActiveId(id)
-    setUnreadCounts((prev) => ({ ...prev, [id]: 0 }))
-  }, [])
+      setThreads((prev) => {
+        const existing = prev[patientId] ?? []
+        // Count new messages from patient (not from doctor) since last load
+        const prevLen = existing.length
+        const newPatientMsgs = msgs.slice(prevLen).filter(
+          (m) => m.sender._id !== myId
+        ).length
+        if (newPatientMsgs > 0 && patientId !== activeId) {
+          setUnreadCounts((u) => ({ ...u, [patientId]: (u[patientId] ?? 0) + newPatientMsgs }))
+        }
+        return { ...prev, [patientId]: msgs }
+      })
+    } catch (err) { console.error(err) }
+    finally { if (!silent) setThreadLoading(false) }
+  }, [myId, activeId])
+
+  /* ── Load thread when active patient changes ── */
+  useEffect(() => {
+    if (!activeId) return
+    fetchThread(activeId)
+    setUnreadCounts((prev) => ({ ...prev, [activeId]: 0 }))
+  }, [activeId, fetchThread])
+
+  /* ── 3-second polling for active thread ── */
+  useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    if (!activeId) return
+
+    pollRef.current = setInterval(() => {
+      fetchThread(activeId, true)
+    }, 3000)
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [activeId, fetchThread])
 
   /* ── Send message ── */
-  const handleSend = useCallback((e?: React.FormEvent) => {
+  const handleSend = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault()
     const text = input.trim()
-    if (!text || !activeId) return
+    if (!text || !activeId || sending) return
 
-    const doctorMsg: ChatMessage = {
-      id:     `${activeId}-${Date.now()}`,
-      sender: 'doctor',
-      text,
-      time:   getTime(),
-      read:   true,
-    }
+    const token = getToken()
+    if (!token) return
 
-    setConversations((prev) => ({
-      ...prev,
-      [activeId]: [...(prev[activeId] || []), doctorMsg],
-    }))
+    setSending(true)
     setInput('')
 
-    // Simulate patient typing then replying
-    setIsTyping(true)
-    setTimeout(() => {
-      setIsTyping(false)
-      const replies = [
-        "Thanks, Doctor. I'll keep that in mind.",
-        "Understood! I'll update you after my next session.",
-        "Got it. Should I also log this in the app?",
-        "Thank you for the quick response!",
-        "Okay, I'll follow your instructions carefully.",
-      ]
-      const patientReply: ChatMessage = {
-        id:     `${activeId}-${Date.now() + 1}`,
-        sender: 'patient',
-        text:   replies[Math.floor(Math.random() * replies.length)],
-        time:   getTime(),
-        read:   true,
+    // Optimistic update
+    const optimistic: ChatMessage = {
+      _id: `optimistic-${Date.now()}`,
+      sender: { _id: myId ?? '', name: 'Doctor', role: 'doctor' },
+      receiver: { _id: activeId, name: '', role: 'patient' },
+      text,
+      timestamp: new Date().toISOString(),
+    }
+    setThreads((prev) => ({
+      ...prev,
+      [activeId]: [...(prev[activeId] ?? []), optimistic],
+    }))
+
+    try {
+      const res = await fetch(`${API}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ receiverId: activeId, text }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        // Replace optimistic with real message
+        setThreads((prev) => ({
+          ...prev,
+          [activeId]: [
+            ...(prev[activeId] ?? []).filter((m) => m._id !== optimistic._id),
+            data.message,
+          ],
+        }))
+      } else {
+        // Rollback
+        setThreads((prev) => ({
+          ...prev,
+          [activeId]: (prev[activeId] ?? []).filter((m) => m._id !== optimistic._id),
+        }))
       }
-      setConversations((prev) => ({
+    } catch {
+      // Rollback
+      setThreads((prev) => ({
         ...prev,
-        [activeId]: [...(prev[activeId] || []), patientReply],
+        [activeId]: (prev[activeId] ?? []).filter((m) => m._id !== optimistic._id),
       }))
-    }, 1500)
-  }, [input, activeId])
+    } finally {
+      setSending(false)
+    }
+  }, [input, activeId, sending, myId])
 
   /* ── Derived state ── */
-  const activePatient  = patients.find((p) => p._id === activeId) ?? null
-  const activeMessages = activeId ? (conversations[activeId] ?? []) : []
+  const activePatient = patients.find((p) => p._id === activeId) ?? null
+  const activeMessages = activeId ? (threads[activeId] ?? []) : []
   const filteredPatients = patients.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -336,8 +350,19 @@ export default function MessagesPage() {
               </span>
             )}
           </h1>
-          <p className="text-white/60 mt-1">Secure messaging with your assigned patients.</p>
+          <p className="text-white/60 mt-1">Secure bidirectional messaging with your assigned patients.</p>
         </div>
+        {/* Manual refresh for active thread */}
+        {activeId && (
+          <button
+            type="button"
+            onClick={() => fetchThread(activeId)}
+            title="Refresh thread"
+            className="p-2.5 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/5 text-white/40 hover:text-white transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* ── Two-pane layout ── */}
@@ -377,21 +402,28 @@ export default function MessagesPage() {
                 ))}
               </div>
             ) : filteredPatients.length === 0 ? (
-              <div className="py-12 text-center px-4">
-                <MessageSquare className="h-8 w-8 mx-auto mb-2 text-white/10" />
-                <p className="text-white/25 text-xs">No conversations found</p>
+              <div className="flex flex-col items-center justify-center p-12 border border-white/5 rounded-2xl bg-white/[0.01] m-3">
+                <MessageSquare className="h-8 w-8 mb-2 text-white/10" />
+                <p className="text-white/25 text-xs text-center">No patients found</p>
               </div>
             ) : (
-              filteredPatients.map((p) => (
-                <InboxItem
-                  key={p._id}
-                  patient={p}
-                  messages={conversations[p._id] ?? []}
-                  isActive={activeId === p._id}
-                  unread={unreadCounts[p._id] ?? 0}
-                  onClick={() => selectPatient(p._id)}
-                />
-              ))
+              filteredPatients.map((p) => {
+                const msgs = threads[p._id] ?? []
+                const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null
+                return (
+                  <InboxItem
+                    key={p._id}
+                    patient={p}
+                    lastMsg={lastMsg}
+                    isActive={activeId === p._id}
+                    unread={unreadCounts[p._id] ?? 0}
+                    onClick={() => {
+                      setActiveId(p._id)
+                      setUnreadCounts((prev) => ({ ...prev, [p._id]: 0 }))
+                    }}
+                  />
+                )
+              })
             )}
           </div>
 
@@ -399,7 +431,7 @@ export default function MessagesPage() {
           {!loading && (
             <div className="px-4 py-2.5 border-t border-white/8 shrink-0">
               <p className="text-[10px] text-white/20 text-center">
-                {patients.length} patient{patients.length !== 1 ? 's' : ''} · HIPAA-compliant
+                {patients.length} patient{patients.length !== 1 ? 's' : ''} · Live polling active
               </p>
             </div>
           )}
@@ -440,7 +472,7 @@ export default function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => alert('Video call feature coming soon.')}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.02] border border-white/10 text-white/70 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.02] border border-white/10 text-white/70 hover:text-white hover:bg-white/5 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] text-xs font-medium transition-all"
                 >
                   <Video className="h-3.5 w-3.5" />
                   Start Video Call
@@ -449,11 +481,32 @@ export default function MessagesPage() {
 
               {/* ── Messages area ── */}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                {activeMessages.map((msg) => (
-                  <ChatBubble key={msg.id} msg={msg} />
-                ))}
+                {threadLoading ? (
+                  <div className="space-y-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className={`flex items-end gap-2 ${i % 2 === 0 ? 'flex-row-reverse' : ''}`}>
+                        <div className="h-7 w-7 rounded-full bg-white/8 animate-pulse shrink-0" />
+                        <div className="h-10 rounded-2xl bg-white/8 animate-pulse" style={{ width: `${40 + i * 8}%` }} />
+                      </div>
+                    ))}
+                  </div>
+                ) : activeMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+                    <div className="flex flex-col items-center justify-center p-12 border border-white/5 rounded-2xl bg-white/[0.01]">
+                      <MessageSquare className="h-8 w-8 text-white/10 mb-2" />
+                      <p className="text-white/30 text-sm">No messages yet</p>
+                      <p className="text-white/15 text-xs mt-1">
+                        Send the first message to {activePatient.name}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  activeMessages.map((msg) => (
+                    <ChatBubble key={msg._id} msg={msg} myId={myId ?? ''} />
+                  ))
+                )}
 
-                {isTyping && <TypingIndicator />}
+                {sending && <TypingIndicator />}
                 <div ref={bottomRef} />
               </div>
 
@@ -471,11 +524,11 @@ export default function MessagesPage() {
                 />
                 <button
                   type="submit"
-                  disabled={!input.trim()}
-                  className="p-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-white/8 disabled:text-white/20 text-white transition-all shadow-[0_0_12px_rgba(6,182,212,0.3)] disabled:shadow-none shrink-0"
+                  disabled={!input.trim() || sending}
+                  className="p-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-white/8 disabled:text-white/20 text-white transition-all shadow-[0_0_12px_rgba(6,182,212,0.3)] disabled:shadow-none hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] shrink-0"
                   aria-label="Send message"
                 >
-                  <Send className="w-4 h-4" />
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 </button>
               </form>
             </>

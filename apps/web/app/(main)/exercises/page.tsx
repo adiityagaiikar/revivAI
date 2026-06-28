@@ -1,10 +1,9 @@
 'use client'
 
-import { Clock, Flame, Play, Search, Zap, ImageOff } from 'lucide-react'
+import { Clock, Flame, Play, Search, Zap, ClipboardList, Target, Activity } from 'lucide-react'
 import { Input } from '@workspace/ui/components/input'
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { motion, type Variants } from 'framer-motion'
 import { ALL_EXERCISES, filterExercisesByPlan, type PatientPlan, type ExerciseItem } from '@/lib/activity-catalog'
 import { usePatientPlan } from '@/hooks/usePatientPlan'
@@ -41,25 +40,14 @@ const cardVariants: Variants = {
 }
 
 /* ─────────────────────────────────────────────
-   GIF image with graceful fallback
-───────────────────────────────────────────── */
-function ExerciseGif({ src, alt }: { src: string; alt: string }) {
-  return (
-    <img
-      src={src}
-      alt={alt}
-      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-500"
-    />
-  )
-}
-
-/* ─────────────────────────────────────────────
    Single exercise card
 ───────────────────────────────────────────── */
 function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: number }) {
   const accent = CATEGORY_ACCENT[exercise.category] ?? CATEGORY_ACCENT.Strength
   const diffStyle = DIFFICULTY_STYLE[exercise.difficulty] ?? DIFFICULTY_STYLE.Beginner
+  const [imageFailed, setImageFailed] = useState(false)
 
+  // All exercises are now startable — those without AI still go to a guided page
   return (
     <motion.div
       custom={index}
@@ -71,11 +59,27 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
       {/* ── Thumbnail preview ── */}
       <div className="relative w-full h-48 overflow-hidden rounded-t-xl">
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent z-[1]" />
-        <img
-          src={exercise.thumbnailUrl}
-          alt={exercise.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-70 grayscale-[50%]"
-        />
+        {!imageFailed ? (
+          <img
+            src={exercise.thumbnailUrl}
+            alt={exercise.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-70 grayscale-[50%]"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br from-cyan-500/10 via-white/5 to-violet-500/10">
+            <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.28),transparent_60%)]" />
+            <div className="relative z-10 flex flex-col items-center gap-3 text-center px-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md">
+                <Activity className="h-8 w-8 text-cyan-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">{exercise.name}</p>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-white/30">AI tracked rehab</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Floating badges — top-right of image */}
         <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5 z-10">
@@ -127,21 +131,93 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
           </div>
         </div>
 
-        {/* CTA button — always visible */}
-        {exercise.hasAI ? (
-          <Link href={`/exercises/${exercise.slug}`} className="block mt-1">
-            <button className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 backdrop-blur-md flex items-center justify-center gap-2 transition-all duration-300 hover:bg-white/10 hover:text-white hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] text-sm font-medium">
-              <Play className="h-4 w-4" />
-              Start with AI
-            </button>
-          </Link>
-        ) : (
-          <div className="w-full py-3 mt-1 rounded-xl bg-white/2 border border-white/8 text-white/25 flex items-center justify-center gap-2 text-sm cursor-not-allowed">
-            In-person / guided only
-          </div>
-        )}
+        {/* CTA button — ALL exercises are now startable */}
+        <Link href={`/exercises/${exercise.slug}`} className="block mt-1">
+          <button className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 text-sm font-medium ${
+            exercise.hasAI
+              ? 'bg-white/5 border border-white/10 text-white/70 backdrop-blur-md hover:bg-white/10 hover:text-white hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]'
+              : 'bg-white/[0.03] border border-white/8 text-white/50 hover:bg-white/8 hover:text-white/80 hover:border-white/15'
+          }`}>
+            <Play className="h-4 w-4" />
+            {exercise.hasAI ? 'Start with AI' : 'Start Exercise'}
+          </button>
+        </Link>
       </div>
     </motion.div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   Doctor-assigned task card
+───────────────────────────────────────────── */
+interface CareTask {
+  _id?: string
+  taskName: string
+  taskType: string
+  targetValue: number
+  assignedDay: string
+  isCompleted: boolean
+}
+
+function DoctorAssignedCard({ task, index }: { task: CareTask; index: number }) {
+  // Try to find matching exercise for the link
+  const matchedEx = ALL_EXERCISES.find(
+    (e) => e.name.toLowerCase() === task.taskName.toLowerCase()
+      || task.taskName.toLowerCase().includes(e.name.toLowerCase().split(' ')[0])
+  )
+
+  const inner = (
+    <motion.div
+      custom={index}
+      variants={cardVariants}
+      initial="hidden"
+      animate="visible"
+      className={`flex items-center gap-4 p-4 rounded-2xl border transition-all duration-200 group ${
+        task.isCompleted
+          ? 'border-emerald-500/20 bg-emerald-500/5 opacity-70'
+          : 'border-cyan-500/20 bg-cyan-500/5 hover:border-cyan-500/40 hover:bg-cyan-500/10'
+      }`}
+    >
+      {/* Icon */}
+      <div className={`p-3 rounded-xl border shrink-0 ${
+        task.isCompleted
+          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+          : 'border-cyan-500/20 bg-cyan-500/10 text-cyan-400'
+      }`}>
+        <Target className="h-5 w-5" />
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-white truncate">{task.taskName}</p>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <span className="text-xs text-white/40">{task.assignedDay}</span>
+          <span className="text-white/15 text-xs">·</span>
+          <span className="text-xs font-semibold text-cyan-400">{task.targetValue} reps</span>
+          {task.isCompleted && (
+            <span className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+              Done
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Start CTA */}
+      {!task.isCompleted && (
+        <div className="shrink-0">
+          <span className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs font-semibold group-hover:bg-cyan-500/20 transition-colors">
+            <Play className="h-3 w-3" />
+            Start
+          </span>
+        </div>
+      )}
+    </motion.div>
+  )
+
+  return matchedEx ? (
+    <Link href={`/exercises/${matchedEx.slug}`}>{inner}</Link>
+  ) : (
+    inner
   )
 }
 
@@ -151,9 +227,7 @@ function ExerciseCard({ exercise, index }: { exercise: ExerciseItem; index: numb
 function SkeletonCard() {
   return (
     <div className="bg-white/2 border border-white/10 rounded-2xl overflow-hidden flex flex-col">
-      {/* GIF area */}
       <div className="w-full aspect-video bg-white/5 animate-pulse" />
-      {/* Body */}
       <div className="p-5 flex flex-col gap-3">
         <div className="h-4 w-3/4 rounded-lg bg-white/8 animate-pulse" />
         <div className="h-3 w-full rounded-lg bg-white/5 animate-pulse" />
@@ -173,9 +247,24 @@ function SkeletonCard() {
    Page
 ───────────────────────────────────────────── */
 export default function ExercisesPage() {
-  const [searchTerm, setSearchTerm]           = useState('')
+  const [searchTerm, setSearchTerm]             = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
-  const { plan, loading: planLoading }        = usePatientPlan()
+  const { plan, loading: planLoading }          = usePatientPlan()
+
+  // Deduplicated doctor-assigned care tasks (PHYSICAL only), grouped by exercise name
+  const doctorTasks = useMemo<CareTask[]>(() => {
+    const tasks: CareTask[] = (plan as any)?.careTasks?.filter(
+      (t: CareTask) => t.taskType === 'PHYSICAL'
+    ) ?? []
+    // Deduplicate by taskName — keep unique exercises, pick the first occurrence per name
+    const seen = new Set<string>()
+    return tasks.filter((t) => {
+      const key = t.taskName.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [plan])
 
   const visibleExercises = useMemo(
     () => filterExercisesByPlan(ALL_EXERCISES, plan as PatientPlan | null),
@@ -204,6 +293,44 @@ export default function ExercisesPage() {
             : 'Browse the full exercise library with AI-powered tracking'}
         </p>
       </div>
+
+      {/* ── SECTION: Assigned by Doctor ── */}
+      {!planLoading && doctorTasks.length > 0 && (
+        <div className="space-y-4">
+          {/* Section header */}
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg border border-cyan-500/20 bg-cyan-500/10">
+              <ClipboardList className="h-4 w-4 text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white uppercase tracking-widest">
+                Assigned by Doctor
+              </h2>
+              <p className="text-[11px] text-white/35 mt-0.5">
+                Your personalized targets from the care plan
+              </p>
+            </div>
+            <span className="ml-auto text-[10px] font-bold text-cyan-400 border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 rounded-full">
+              {doctorTasks.length} exercise{doctorTasks.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {doctorTasks.map((task, i) => (
+              <DoctorAssignedCard key={task._id ?? `${task.taskName}-${i}`} task={task} index={i} />
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4 pt-2">
+            <div className="flex-1 h-px bg-white/8" />
+            <span className="text-[10px] text-white/20 uppercase tracking-widest font-semibold">
+              Full Library
+            </span>
+            <div className="flex-1 h-px bg-white/8" />
+          </div>
+        </div>
+      )}
 
       {/* ── Search + category filters ── */}
       <div className="flex flex-col sm:flex-row gap-4">
@@ -236,12 +363,10 @@ export default function ExercisesPage() {
 
       {/* ── Exercise grid ── */}
       {planLoading ? (
-        /* Skeleton grid while plan loads */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
           {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : !planLoading && plan?.enabled && filteredExercises.length === 0 ? (
-        /* Empty state — doctor plan active but nothing assigned */
         <div className="rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-12 text-center">
           <div className="h-12 w-12 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center mx-auto mb-4">
             <Search className="h-6 w-6 text-white/25" />
@@ -250,7 +375,6 @@ export default function ExercisesPage() {
           <p className="text-sm text-white/30">Your doctor will assign exercises to your plan. Check back later.</p>
         </div>
       ) : filteredExercises.length === 0 ? (
-        /* Empty state — search returned nothing */
         <div className="rounded-2xl border border-white/10 bg-white/3 backdrop-blur-md p-12 text-center">
           <p className="text-white/60 font-medium mb-1">No exercises match &ldquo;{searchTerm}&rdquo;</p>
           <button

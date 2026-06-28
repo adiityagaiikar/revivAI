@@ -35,6 +35,15 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  assignedDoctor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  weeklySmartNudge: {
+    type: String,
+    default: ''
+  },
   // When true, patient sees only assigned exercises / games (dashboard + lists)
   doctorPersonalizationEnabled: {
     type: Boolean,
@@ -43,6 +52,23 @@ const userSchema = new mongoose.Schema({
   medicalHistory: {
     type: String,
     default: ''
+  },
+  // ── Demographics (ANN inputs) ───────────────────────────
+  age: {
+    type: Number,
+    min: 0,
+    max: 130,
+    default: null,
+  },
+  weight: {
+    type: Number,
+    min: 0,
+    default: null,
+  },
+  height: {
+    type: Number,
+    min: 0,
+    default: null,
   },
   assignedExerciseSlugs: {
     type: [String],
@@ -71,6 +97,51 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  // Patient: reported health issues used for auto-triage matching
+  issues: {
+    type: [String],
+    default: []
+  },
+  // Doctor: clinical specialties used for auto-triage matching
+  specialties: {
+    type: [String],
+    default: []
+  },
+
+  // ── Care Plan ─────────────────────────────────────────────
+  // Structured weekly task list assigned by the doctor
+  carePlan: [
+    {
+      taskType: {
+        type: String,
+        enum: ['PHYSICAL', 'COGNITIVE'],
+        required: true,
+      },
+      taskName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      targetValue: {
+        type: Number,
+        required: true,
+        min: 1,
+      },
+      assignedDay: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      isCompleted: {
+        type: Boolean,
+        default: false,
+      },
+      assignedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
 
   // ── Gamification ──────────────────────────────────────────
   currentStreak: {

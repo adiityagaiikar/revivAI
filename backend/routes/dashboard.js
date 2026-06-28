@@ -16,17 +16,17 @@ function safePdfFilename(name) {
 router.get('/patient', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user).select(
-      'doctorPersonalizationEnabled assignedExerciseSlugs assignedCognitiveGameSlugs role'
+      'doctorPersonalizationEnabled assignedExerciseSlugs assignedCognitiveGameSlugs role carePlan weeklySmartNudge'
     );
     const activities = await Activity.find({ userId: req.user }).sort({ date: -1 }).limit(10);
-    
+
     // Aggregations
     const totalWorkouts = await Activity.countDocuments({ userId: req.user, type: 'Fitness' });
     const totalCognitive = await Activity.countDocuments({ userId: req.user, type: 'Cognitive' });
-    
+
     const allActivities = await Activity.find({ userId: req.user });
     const caloriesBurned = allActivities.reduce((acc, curr) => acc + (curr.calories || 0), 0);
-    
+
     const stats = [
       { name: 'Workouts Completed', value: totalWorkouts.toString(), change: '+12%', iconName: 'Activity', color: 'text-blue-400' },
       { name: 'Calories Burned', value: caloriesBurned.toLocaleString(), change: '+8%', iconName: 'Flame', color: 'text-orange-400' },
@@ -43,13 +43,20 @@ router.get('/patient', auth, async (req, res) => {
     const plan =
       user && user.role === 'patient'
         ? {
-            enabled: !!user.doctorPersonalizationEnabled,
-            exerciseSlugs: user.assignedExerciseSlugs || [],
-            gameSlugs: user.assignedCognitiveGameSlugs || [],
-          }
-        : { enabled: false, exerciseSlugs: [], gameSlugs: [] };
+          enabled: !!user.doctorPersonalizationEnabled,
+          exerciseSlugs: user.assignedExerciseSlugs || [],
+          gameSlugs: user.assignedCognitiveGameSlugs || [],
+          careTasks: user.carePlan || []
+        }
+        : { enabled: false, exerciseSlugs: [], gameSlugs: [], careTasks: [] };
 
-    res.json({ activities, stats, weeklyProgress, plan });
+    res.json({
+      activities,
+      stats,
+      weeklyProgress,
+      plan,
+      weeklySmartNudge: user?.weeklySmartNudge || '',
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -59,21 +66,62 @@ router.get('/patient', auth, async (req, res) => {
 // Route for saving a new activity log
 router.post('/activity', auth, async (req, res) => {
   try {
-    const { name, type, duration, score, calories } = req.body;
-    
+    const { name, type, duration, score, calories, clinicalNote } = req.body;
+
     const newActivity = new Activity({
       userId: req.user,
       name,
       type,
       duration,
       score,
-      calories
+      calories,
+      clinicalNote
     });
 
     await newActivity.save();
     res.json({ message: 'Activity stored successfully', activity: newActivity });
   } catch (err) {
     console.error('Failed to create activity', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/dashboard/weekly-activity — per-day activity counts for the last 7 days
+router.get('/weekly-activity', auth, async (req, res) => {
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const activities = await Activity.find({
+      userId: req.user,
+      date: { $gte: sevenDaysAgo },
+    });
+
+    const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayMap = {
+      Mon: { day: 'Mon', workouts: 0, games: 0 },
+      Tue: { day: 'Tue', workouts: 0, games: 0 },
+      Wed: { day: 'Wed', workouts: 0, games: 0 },
+      Thu: { day: 'Thu', workouts: 0, games: 0 },
+      Fri: { day: 'Fri', workouts: 0, games: 0 },
+      Sat: { day: 'Sat', workouts: 0, games: 0 },
+      Sun: { day: 'Sun', workouts: 0, games: 0 },
+    };
+
+    for (const activity of activities) {
+      const dayAbbr = DAY_ABBRS[new Date(activity.date).getDay()];
+      if (activity.type === 'Fitness') {
+        dayMap[dayAbbr].workouts += 1;
+      } else if (activity.type === 'Cognitive') {
+        dayMap[dayAbbr].games += 1;
+      }
+    }
+
+    // Return Mon → Sun order
+    const result = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(
+      (day) => dayMap[day]
+    );
+    res.json(result);
+  } catch (err) {
+    console.error('Weekly activity error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -106,11 +154,11 @@ router.post('/patient/send-report', auth, async (req, res) => {
     if (!user || user.role !== 'patient') {
       return res.status(403).json({ error: 'Only patients can send reports to a doctor.' });
     }
-    if (!user.assignedDoctors || user.assignedDoctors.length === 0) {
+    if (!user.assignedDoctor) {
       return res.status(400).json({ error: 'No doctors assigned to send report to.' });
     }
 
-    const doctorId = user.assignedDoctors[0];
+    const doctorId = user.assignedDoctor;
     const { buffer } = await buildPdfForPatient(req.user, User, Activity);
     const reportId = `REP-${Math.floor(Math.random() * 9000) + 1000}`;
 
@@ -177,7 +225,7 @@ router.get('/doctor/reports/:reportId/pdf', auth, async (req, res) => {
 router.get('/doctor', auth, async (req, res) => {
   try {
     const doctorId = req.user;
-    const totalPatients = await User.countDocuments({ role: 'patient', assignedDoctors: doctorId });
+    const totalPatients = await User.countDocuments({ role: 'patient', assignedDoctor: doctorId });
     const pendingReports = await Report.countDocuments({ doctorId, status: { $in: ['Pending Review', 'Requires Attention'] } });
     const tasksToday = await Task.countDocuments({ doctorId, completed: false });
     const criticalActivity = await Report.countDocuments({ doctorId, critical: true });
@@ -228,7 +276,7 @@ router.get('/doctor/patients/:patientId/health-report-pdf', auth, async (req, re
     const patient = await User.findOne({
       _id: req.params.patientId,
       role: 'patient',
-      assignedDoctors: req.user,
+      assignedDoctor: req.user,
     }).select('name');
     if (!patient) {
       return res.status(404).json({ error: 'Patient not found or not assigned to you.' });
@@ -256,7 +304,7 @@ router.get('/doctor/triage', auth, async (req, res) => {
 
     const patients = await User.find({
       role: 'patient',
-      assignedDoctors: req.user,
+      assignedDoctor: req.user,
     }).select('name email condition complianceScore recentFormScores nextAppointment createdAt');
 
     const enriched = await Promise.all(
@@ -394,8 +442,8 @@ router.patch('/doctor/reports/:reportId', auth, async (req, res) => {
 
 // Theme unlock thresholds
 const THEME_UNLOCKS = {
-  'neon-cyan':       0,
-  'matrix-green':    3,
+  'neon-cyan': 0,
+  'matrix-green': 3,
   'cyberpunk-yellow': 7,
 };
 
@@ -465,12 +513,12 @@ router.get('/gamification', auth, async (req, res) => {
     );
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({
-      currentStreak:    user.currentStreak    || 0,
-      longestStreak:    user.longestStreak    || 0,
-      lastWorkoutDate:  user.lastWorkoutDate  || null,
+      currentStreak: user.currentStreak || 0,
+      longestStreak: user.longestStreak || 0,
+      lastWorkoutDate: user.lastWorkoutDate || null,
       weeklyWorkoutCount: user.weeklyWorkoutCount || 0,
-      unlockedThemes:   user.unlockedThemes   || ['neon-cyan'],
-      activeTheme:      user.activeTheme      || 'neon-cyan',
+      unlockedThemes: user.unlockedThemes || ['neon-cyan'],
+      activeTheme: user.activeTheme || 'neon-cyan',
     });
   } catch (err) {
     console.error(err);

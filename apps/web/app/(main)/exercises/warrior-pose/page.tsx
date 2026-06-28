@@ -61,6 +61,8 @@ export default function WarriorPosePage() {
   const [stats,   setStats]   = useState({ reps: 0, angle: 0, feedback: '', holdFrames: 0 })
   const [err,     setErr]     = useState('')
   const [summary, setSummary] = useState<{ peakReps: number; peakHold: number; total: number } | null>(null)
+  const [currentLandmarks, setCurrentLandmarks] = useState<{ x: number; y: number; z: number }[] | undefined>(undefined)
+  const lastLandmarkUpdate = useRef<number>(0)
 
   useEffect(() => {
     let cancelled = false
@@ -144,6 +146,11 @@ export default function WarriorPosePage() {
     }
 
     setStats({ reps: s.reps, angle: displayAngle, feedback, holdFrames: s.holdFrames })
+    const now = Date.now()
+    if (now - lastLandmarkUpdate.current > 333 && results.landmarks[0]) {
+      setCurrentLandmarks(results.landmarks[0] as { x: number; y: number; z: number }[])
+      lastLandmarkUpdate.current = now
+    }
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
@@ -192,6 +199,8 @@ export default function WarriorPosePage() {
       onStop={handleStop}
       onReset={handleReset}
       onDownload={() => downloadLog('warrior-pose', JSON.parse(localStorage.getItem('warrior-pose-session-log') ?? '[]'))}
+      wsEndpoint="ws://127.0.0.1:8000/ws"
+      landmarks={currentLandmarks}
       videoSlot={<video ref={videoRef} autoPlay playsInline muted className="hidden" />}
       canvasSlot={
         <canvas

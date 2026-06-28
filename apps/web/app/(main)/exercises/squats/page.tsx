@@ -10,20 +10,21 @@ import ExerciseShell from '../components/ExerciseShell'
 import { buildAIDebriefPayload } from '@/lib/ai-debrief'
 import { useAIDebrief } from '@/hooks/useAIDebrief'
 import { calculateFormScore } from '@/lib/scoring'
+import { getScopedStorageKey } from '@/lib/storage-scope'
 
 const AGENT_ID = 'agent_5201kndzmwmmew99xsex4237d84t'
 
 const L_HIP = 23, L_KNEE = 25, L_ANKLE = 27
 const R_HIP = 24, R_KNEE = 26, R_ANKLE = 28
-const UP_THRESHOLD   = 150
+const UP_THRESHOLD = 150
 const DOWN_THRESHOLD = 110
 const GOOD_DEPTH_MIN = 80
 const GOOD_DEPTH_MAX = 110
-const ANGLE_SMOOTH   = 0.40
-const MIN_VIS        = 0.45
+const ANGLE_SMOOTH = 0.40
+const MIN_VIS = 0.45
 
 type SessionEntry = { timestamp: number; wallTime: number; angle: number; reps: number; feedback?: string; stage?: string }
-type SessionAvg   = { session: number; avgAngle: number; totalReps: number; date: string }
+type SessionAvg = { session: number; avgAngle: number; totalReps: number; date: string }
 
 function calcAngle(a: number[], b: number[], c: number[]) {
   const ab = [a[0]! - b[0]!, a[1]! - b[1]!]
@@ -35,8 +36,8 @@ function calcAngle(a: number[], b: number[], c: number[]) {
 
 function downloadLog(key: string, log: SessionEntry[]) {
   const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
   a.href = url; a.download = `${key}-session-${Date.now()}.json`; a.click()
   URL.revokeObjectURL(url)
 }
@@ -58,11 +59,11 @@ const TIPS = [
 ]
 
 export default function SquatsPage() {
-  const videoRef      = useRef<HTMLVideoElement>(null)
-  const canvasRef     = useRef<HTMLCanvasElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const landmarkerRef = useRef<PoseLandmarker | null>(null)
-  const rafRef        = useRef<number>(0)
-  const stateRef      = useRef({ stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false })
+  const rafRef = useRef<number>(0)
+  const stateRef = useRef({ stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false })
   const sessionLogRef = useRef<SessionEntry[]>([])
   const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { debriefStatus, debriefText, resetAIDebrief, requestDebrief } = useAIDebrief()
@@ -70,38 +71,49 @@ export default function SquatsPage() {
   const [ghostLandmarks, setGhostLandmarks] = useState<any>(null)
   const ghostLandmarksRef = useRef<any>(null)
 
-  const [ready,         setReady]         = useState(false)
-  const [running,       setRunning]       = useState(false)
-  const [stats,         setStats]         = useState({ reps: 0, angle: 0, feedback: '', stage: 'up' })
-  const [err,           setErr]           = useState('')
-  const [summary,       setSummary]       = useState<{ peakReps: number; minAngle: number; total: number } | null>(null)
-  const [scorePopup,    setScorePopup]    = useState<string | null>(null)
+  // ── WebSocket recovery: expose current pose landmarks to ExerciseShell (additive) ──
+  const [currentLandmarks, setCurrentLandmarks] = useState<{ x: number; y: number; z: number }[] | undefined>(undefined)
+  const lastLandmarkUpdate = useRef<number>(0)
+
+  const [ready, setReady] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [stats, setStats] = useState({ reps: 0, angle: 0, feedback: '', stage: 'up' })
+  const [err, setErr] = useState('')
+  const [summary, setSummary] = useState<{ peakReps: number; minAngle: number; total: number } | null>(null)
+  const [scorePopup, setScorePopup] = useState<string | null>(null)
   const [voiceChatOpen, setVoiceChatOpen] = useState(false)
-  const [sessionHistory, setSessionHistory] = useState<SessionAvg[]>(() => {
-    if (typeof window === 'undefined') return []
-    try { return JSON.parse(localStorage.getItem('squats-session-history') ?? '[]') } catch { return [] }
-  })
+  const [sessionHistory, setSessionHistory] = useState<SessionAvg[]>([])
+  const historyKey = getScopedStorageKey('squats-session-history')
+  const logKey = getScopedStorageKey('squats-session-log')
+
+  useEffect(() => {
+    try {
+      setSessionHistory(JSON.parse(localStorage.getItem(historyKey) ?? '[]'))
+    } catch {
+      setSessionHistory([])
+    }
+  }, [historyKey])
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-        )
-        const pl = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numPoses: 1,
-        })
-        if (!cancelled) { landmarkerRef.current = pl; setReady(true) }
-      } catch {
-        if (!cancelled) setErr('Failed to load pose model. Check your connection.')
-      }
-    })()
+      ; (async () => {
+        try {
+          const vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+          )
+          const pl = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
+              delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            numPoses: 1,
+          })
+          if (!cancelled) { landmarkerRef.current = pl; setReady(true) }
+        } catch {
+          if (!cancelled) setErr('Failed to load pose model. Check your connection.')
+        }
+      })()
     return () => { cancelled = true }
   }, [])
 
@@ -131,17 +143,17 @@ export default function SquatsPage() {
     let feedback = ''
 
     if (results.landmarks.length > 0) {
-      const lm  = results.landmarks[0]!
+      const lm = results.landmarks[0]!
       const vis = (i: number) => lm[i]?.visibility ?? 0
-      const pt  = (i: number) => [lm[i]!.x, lm[i]!.y]
+      const pt = (i: number) => [lm[i]!.x, lm[i]!.y]
 
-      const leftOk  = Math.min(vis(L_HIP), vis(L_KNEE), vis(L_ANKLE)) >= MIN_VIS
+      const leftOk = Math.min(vis(L_HIP), vis(L_KNEE), vis(L_ANKLE)) >= MIN_VIS
       const rightOk = Math.min(vis(R_HIP), vis(R_KNEE), vis(R_ANKLE)) >= MIN_VIS
 
       let angle = 0
       if (leftOk && rightOk) angle = (calcAngle(pt(L_HIP), pt(L_KNEE), pt(L_ANKLE)) + calcAngle(pt(R_HIP), pt(R_KNEE), pt(R_ANKLE))) / 2
-      else if (leftOk)       angle = calcAngle(pt(L_HIP), pt(L_KNEE), pt(L_ANKLE))
-      else if (rightOk)      angle = calcAngle(pt(R_HIP), pt(R_KNEE), pt(R_ANKLE))
+      else if (leftOk) angle = calcAngle(pt(L_HIP), pt(L_KNEE), pt(L_ANKLE))
+      else if (rightOk) angle = calcAngle(pt(R_HIP), pt(R_KNEE), pt(R_ANKLE))
 
       if (angle > 0) s.smoothed = s.smoothed ? ANGLE_SMOOTH * angle + (1 - ANGLE_SMOOTH) * s.smoothed : angle
       const sa = s.smoothed
@@ -201,6 +213,16 @@ export default function SquatsPage() {
       feedback,
       stage: s.stage,
     })
+    // ── Throttled landmark capture for WS recovery (additive) ──
+    const now = Date.now()
+    if (now - lastLandmarkUpdate.current > 333) {
+      if (results.poseLandmarks || (results.landmarks && results.landmarks[0])) {
+        const marks = results.poseLandmarks || results.landmarks[0]
+        setCurrentLandmarks(marks)
+        lastLandmarkUpdate.current = now
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────────
     rafRef.current = requestAnimationFrame(detect)
   }, [])
 
@@ -218,7 +240,7 @@ export default function SquatsPage() {
     setScorePopup(null)
     stopCamera(); setRunning(false)
     const log = sessionLogRef.current
-    localStorage.setItem('squats-session-log', JSON.stringify(log))
+    localStorage.setItem(logKey, JSON.stringify(log))
     if (log.length > 0) {
       const peakReps = Math.max(...log.map(e => e.reps))
       const minAngle = Math.min(...log.map(e => e.angle))
@@ -226,13 +248,13 @@ export default function SquatsPage() {
       setSummary({ peakReps, minAngle, total: log.length })
       setSessionHistory(prev => {
         const next = [...prev, { session: prev.length + 1, avgAngle, totalReps: peakReps, date: new Date().toLocaleDateString() }]
-        localStorage.setItem('squats-session-history', JSON.stringify(next))
+        localStorage.setItem(historyKey, JSON.stringify(next))
         return next
       })
       await requestDebrief(buildAIDebriefPayload('squats', log, peakReps))
     }
     sessionLogRef.current = []
-  }, [stopCamera, requestDebrief])
+  }, [stopCamera, requestDebrief, historyKey, logKey])
 
   const handleReset = useCallback(() => {
     stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
@@ -264,7 +286,9 @@ export default function SquatsPage() {
         onStart={handleStart}
         onStop={handleStop}
         onReset={handleReset}
-        onDownload={() => downloadLog('squats', JSON.parse(localStorage.getItem('squats-session-log') ?? '[]'))}
+        onDownload={() => downloadLog('squats', JSON.parse(localStorage.getItem(logKey) ?? '[]'))}
+        wsEndpoint="ws://127.0.0.1:8000/ws"
+        landmarks={currentLandmarks}
         videoSlot={<video ref={videoRef} autoPlay playsInline muted className="hidden" />}
         canvasSlot={
           <canvas
@@ -295,7 +319,7 @@ export default function SquatsPage() {
             <LineChart data={sessionHistory} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
               <XAxis dataKey="session" stroke="#444" fontSize={11} tickFormatter={(v) => `S${v}`} />
-              <YAxis yAxisId="reps"  stroke="#67e8f9" fontSize={11} />
+              <YAxis yAxisId="reps" stroke="#67e8f9" fontSize={11} />
               <YAxis yAxisId="angle" orientation="right" stroke="#a78bfa" fontSize={11} domain={[0, 180]} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: 11 }}
@@ -303,8 +327,8 @@ export default function SquatsPage() {
                 labelFormatter={(l) => `Session ${l}`}
               />
               <Legend formatter={(val) => val === 'totalReps' ? 'Peak Reps' : 'Avg Angle (°)'} wrapperStyle={{ fontSize: 11, color: '#666' }} />
-              <Line yAxisId="reps"  type="monotone" dataKey="totalReps" stroke="#67e8f9" strokeWidth={2} dot={{ r: 4, fill: '#67e8f9' }} activeDot={{ r: 6 }} />
-              <Line yAxisId="angle" type="monotone" dataKey="avgAngle"  stroke="#a78bfa" strokeWidth={2} dot={{ r: 4, fill: '#a78bfa' }} activeDot={{ r: 6 }} />
+              <Line yAxisId="reps" type="monotone" dataKey="totalReps" stroke="#67e8f9" strokeWidth={2} dot={{ r: 4, fill: '#67e8f9' }} activeDot={{ r: 6 }} />
+              <Line yAxisId="angle" type="monotone" dataKey="avgAngle" stroke="#a78bfa" strokeWidth={2} dot={{ r: 4, fill: '#a78bfa' }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>

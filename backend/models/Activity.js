@@ -8,6 +8,7 @@ const activitySchema = new mongoose.Schema({
   score: { type: String }, // e.g. "85%"
   date: { type: Date, default: Date.now },
   calories: { type: Number, default: 0 },
+  clinicalNote: { type: String }, // AI-generated SOAP note
 });
 
 module.exports = mongoose.model('Activity', activitySchema);

@@ -76,6 +76,12 @@ Then start each service with its production command:
 ```bash
 npm --prefix backend start
 npm --prefix apps/web start
+
+# Windows
+venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
 ```
 
 ## Health check
@@ -86,13 +92,10 @@ npm --prefix apps/web start
 - If you see auth or token errors, confirm `JWT_SECRET` is set in `.env`.
 - The frontend reads `NEXT_PUBLIC_API_URL` for API calls (defaults to `http://localhost:5000/api`). See [apps/web/lib/api.ts](apps/web/lib/api.ts#L1-L5).
 
-## Contributing
-- Fork, make changes in feature branches, and open pull requests against the main branch.
-
-
-
 Frontend	npm run dev (from root)
 
 Node backend	cd backend && npm run dev
 
 Python FastAPI	cd backend && venv\Scripts\activate && uvicorn exercise_adapter:app --reload --port 8000
+
+

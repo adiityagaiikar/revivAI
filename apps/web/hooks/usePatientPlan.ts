@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { PatientPlan } from '@/lib/activity-catalog'
+import type { CareTask } from '@/app/actions/carePlanActions'
 
 import { API } from '@/lib/api'
 
@@ -30,7 +31,8 @@ export function usePatientPlan() {
             enabled: !!p.enabled,
             exerciseSlugs: p.exerciseSlugs || [],
             gameSlugs: p.gameSlugs || [],
-          })
+            careTasks: p.careTasks || [],
+          } as any) // Type assertion to bypass strict missing properties if activity-catalog is outdated
         }
       } catch {
         /* ignore */

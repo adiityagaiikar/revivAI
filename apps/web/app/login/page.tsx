@@ -79,66 +79,6 @@ export default function LoginPage() {
             <p className="text-white/40 text-sm mt-1">Sign in to your account to continue</p>
           </div>
 
-          {/* ── Demo quick-login buttons ── */}
-          <div className="space-y-3 mb-6">
-            <p className="text-[10px] font-semibold text-white/25 uppercase tracking-widest text-center">
-              Quick Demo Access
-            </p>
-
-            {/* Patient demo */}
-            <button
-              type="button"
-              onClick={() => handleDemo('patient')}
-              disabled={!!demoLoading || loading}
-              className="w-full flex items-center gap-4 px-5 py-4 rounded-xl border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all group"
-            >
-              <div className="p-2 rounded-lg bg-violet-500/20 border border-violet-500/30 shrink-0">
-                {demoLoading === 'patient'
-                  ? <Loader2 className="h-5 w-5 text-violet-400 animate-spin" />
-                  : <User className="h-5 w-5 text-violet-400" />}
-              </div>
-              <div className="text-left flex-1">
-                <p className="text-sm font-semibold text-white">
-                  {demoLoading === 'patient' ? 'Signing in…' : 'Login as Patient (Aditya)'}
-                </p>
-                <p className="text-xs text-white/40">Patient portal · /dashboard</p>
-              </div>
-              <div className="text-[10px] font-bold text-violet-400 border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 rounded-full shrink-0">
-                DEMO
-              </div>
-            </button>
-
-            {/* Doctor demo */}
-            <button
-              type="button"
-              onClick={() => handleDemo('doctor')}
-              disabled={!!demoLoading || loading}
-              className="w-full flex items-center gap-4 px-5 py-4 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all group"
-            >
-              <div className="p-2 rounded-lg bg-cyan-500/20 border border-cyan-500/30 shrink-0">
-                {demoLoading === 'doctor'
-                  ? <Loader2 className="h-5 w-5 text-cyan-400 animate-spin" />
-                  : <Stethoscope className="h-5 w-5 text-cyan-400" />}
-              </div>
-              <div className="text-left flex-1">
-                <p className="text-sm font-semibold text-white">
-                  {demoLoading === 'doctor' ? 'Signing in…' : 'Login as Provider (Dr. Viren)'}
-                </p>
-                <p className="text-xs text-white/40">Doctor portal · /doctor-dashboard</p>
-              </div>
-              <div className="text-[10px] font-bold text-cyan-400 border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 rounded-full shrink-0">
-                DEMO
-              </div>
-            </button>
-          </div>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex-1 h-px bg-white/8" />
-            <span className="text-[11px] text-white/25 uppercase tracking-widest">or sign in with credentials</span>
-            <div className="flex-1 h-px bg-white/8" />
-          </div>
-
           {/* Error */}
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">

@@ -53,7 +53,7 @@ interface AuthContextValue {
 ───────────────────────────────────────────── */
 const DEMO_CREDENTIALS = {
   patient: { email: 'aditya.gaikar.patient@revivai.demo', password: 'revivai_demo_2025' },
-  doctor:  { email: 'doctor@revivai.demo',                password: 'doctor123' },
+  doctor:  { email: 'doctor1@example.com',                password: 'password123' },
 } as const
 
 /* ─────────────────────────────────────────────
@@ -95,8 +95,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
         const data = await res.json()
+        const userId = String(data.id ?? data._id ?? '')
+        if (userId) {
+          localStorage.setItem('auth_user_id', userId)
+        }
         setUser({
-          id:    data.id ?? data._id,
+          id:    userId,
           name:  data.name,
           email: data.email,
           role:  data.role as UserRole,
@@ -123,8 +127,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('token', data.token)
 
     const profile = data.user ?? {}
+    const userId = String(profile.id ?? profile._id ?? '')
+    if (userId) {
+      localStorage.setItem('auth_user_id', userId)
+    }
     const authUser: AuthUser = {
-      id:    profile.id ?? profile._id ?? '',
+      id:    userId,
       name:  profile.name  ?? '',
       email: profile.email ?? email,
       role:  (profile.role ?? 'patient') as UserRole,
@@ -148,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: creds.email,
         role,
       }
+      localStorage.setItem('auth_user_id', synthetic.id)
       setUser(synthetic)
       router.push(role === 'doctor' ? '/doctor-dashboard' : '/dashboard')
     }
@@ -156,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /* ── Logout ── */
   const logout = useCallback(() => {
     localStorage.removeItem('token')
+    localStorage.removeItem('auth_user_id')
     setUser(null)
     router.push('/login')
   }, [router])

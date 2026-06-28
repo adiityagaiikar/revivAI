@@ -7,6 +7,7 @@ import { Spotlight } from "@workspace/ui/components/spotlight"
 import { Activity, Play, Square, RotateCcw, ArrowLeft, Video, VideoOff } from "lucide-react"
 import Link from "next/link"
 import { usePatientPlan, isExerciseAllowed } from '@/hooks/usePatientPlan'
+import { API } from '@/lib/api'
 
 interface ExerciseDetailProps {
   exerciseName: string
@@ -27,10 +28,47 @@ export default function ExerciseRunner({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [stats, setStats] = useState({ reps: 0, angle: 0, error: '' })
+  const [recoveryWeeks, setRecoveryWeeks] = useState<number | null>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [frameSrc, setFrameSrc] = useState<string | null>(null)
+  const [demographics, setDemographics] = useState<{ age: number | null; weight: number | null }>({
+    age: null,
+    weight: null,
+  })
   const wsRef = useRef<WebSocket | null>(null)
   const { plan, loading: planLoading } = usePatientPlan()
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadDemographics = async () => {
+      try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+
+        const res = await fetch(`${API}/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) return
+
+        const data = await res.json()
+        if (!cancelled) {
+          setDemographics({
+            age: typeof data.age === 'number' ? data.age : null,
+            weight: typeof data.weight === 'number' ? data.weight : null,
+          })
+        }
+      } catch {
+        // If demographics fetch fails, stream continues with frame-only payload.
+      }
+    }
+
+    loadDemographics()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Handle video stream changes
   useEffect(() => {
@@ -88,6 +126,7 @@ export default function ExerciseRunner({
     
     setIsLoading(true)
     setIsRunning(true)
+    setRecoveryWeeks(null)
     
     // Connect to FastAPI WebSocket for real-time analysis
     const ws = new WebSocket(`ws://localhost:8000/ws/${exerciseId}`)
@@ -107,7 +146,11 @@ export default function ExerciseRunner({
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
           const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
-          ws.send(dataUrl)
+          ws.send(JSON.stringify({
+            frame: dataUrl,
+            age: demographics.age,
+            weight: demographics.weight,
+          }))
         }
       }
       animationFrameId = requestAnimationFrame(processFrame)
@@ -123,6 +166,9 @@ export default function ExerciseRunner({
       const data = JSON.parse(event.data)
       if (data.frame) {
         setFrameSrc(`data:image/jpeg;base64,${data.frame}`)
+      }
+      if (typeof data.recovery_weeks === 'number') {
+        setRecoveryWeeks(data.recovery_weeks)
       }
       setStats({
         reps: data.rep_count || 0,
@@ -159,6 +205,7 @@ export default function ExerciseRunner({
 
   const resetExercise = () => {
     setStats({ reps: 0, angle: 0, error: '' })
+    setRecoveryWeeks(null)
   }
 
   useEffect(() => {
@@ -182,13 +229,13 @@ export default function ExerciseRunner({
   if (!isExerciseAllowed(exerciseId, plan)) {
     return (
       <div className="space-y-6">
-        <Card className="bg-black/[0.96] border-white/10 p-8 max-w-lg mx-auto text-center">
+        <Card className="bg-black/96 border-white/10 p-8 max-w-lg mx-auto text-center">
           <h2 className="text-xl font-semibold text-white mb-2">Not assigned to your plan</h2>
           <p className="text-neutral-400 text-sm mb-6">
             Your doctor has personalized your program. This exercise is not part of your current assignments.
           </p>
           <Link href="/exercises">
-            <Button className="bg-white text-black hover:bg-white/90">Back to exercises</Button>
+            <Button className="bg-white text-black font-semibold hover:bg-white/90">Back to exercises</Button>
           </Link>
         </Card>
       </div>
@@ -224,7 +271,7 @@ export default function ExerciseRunner({
       {/* Main Exercise Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Video Feed */}
-        <Card className="lg:col-span-2 bg-black/[0.96] border-white/10 p-4">
+        <Card className="lg:col-span-2 bg-black/96 border-white/10 p-4">
           <canvas ref={canvasRef} className="hidden" />
           <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden">
             
@@ -277,6 +324,30 @@ export default function ExerciseRunner({
                 </div>
               </div>
             )}
+
+            {/* Recovery Prediction Card */}
+            {isRunning && (
+              <div className="absolute top-4 right-4 z-30 w-56 rounded-2xl border border-cyan-400/20 bg-white/5 p-4 backdrop-blur-xl shadow-[0_0_28px_rgba(34,211,238,0.16)]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
+                  AI Recovery Prediction
+                </p>
+                {recoveryWeeks == null ? (
+                  <div className="mt-3 flex items-center gap-3 text-white/65">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400/60 border-t-transparent" />
+                    <span className="text-sm">Analyzing Sequence...</span>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <div className="text-2xl font-semibold text-white tracking-tight">
+                      {recoveryWeeks.toFixed(1)} Weeks
+                    </div>
+                    <p className="mt-1 text-xs text-white/45">
+                      Updated from live kinematic frames and demographics.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             
             {/* Error Overlay */}
             {stats.error && (
@@ -292,8 +363,7 @@ export default function ExerciseRunner({
               <>
                 <Button
                   onClick={startCamera}
-                  variant="outline"
-                  className="border-white/20 text-white hover:bg-white/10"
+                  className="px-6 py-2 rounded-lg bg-white/5 border border-white/10 text-white font-medium backdrop-blur-md hover:bg-white/10 hover:border-white/20 transition-all duration-200"
                   disabled={isLoading || !!stream}
                 >
                   <Video className="h-4 w-4 mr-2" />
@@ -302,7 +372,7 @@ export default function ExerciseRunner({
                 
                 <Button
                   onClick={startExercise}
-                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                  className="px-6 py-2 rounded-lg bg-white/5 border border-white/10 text-white font-medium backdrop-blur-md hover:bg-white/10 hover:border-white/20 transition-all duration-200"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -321,7 +391,7 @@ export default function ExerciseRunner({
             ) : (
               <Button
                 onClick={stopExercise}
-                className="bg-red-500 hover:bg-red-600 text-white"
+                className="px-6 py-2 rounded-lg bg-white/5 border border-white/10 text-white font-medium backdrop-blur-md hover:bg-white/10 hover:border-white/20 transition-all duration-200"
               >
                 <Square className="h-4 w-4 mr-2" />
                 Stop
@@ -330,8 +400,7 @@ export default function ExerciseRunner({
             
             <Button
               onClick={resetExercise}
-              variant="outline"
-              className="border-white/20 text-white hover:bg-white/10"
+              className="px-6 py-2 rounded-lg bg-white/5 border border-white/10 text-white font-medium backdrop-blur-md hover:bg-white/10 hover:border-white/20 transition-all duration-200"
               disabled={!isRunning}
             >
               <RotateCcw className="h-4 w-4 mr-2" />
@@ -341,8 +410,7 @@ export default function ExerciseRunner({
             {stream && (
               <Button
                 onClick={stopCamera}
-                variant="outline"
-                className="border-white/20 text-white hover:bg-white/10"
+                className="px-6 py-2 rounded-lg bg-white/5 border border-white/10 text-white font-medium backdrop-blur-md hover:bg-white/10 hover:border-white/20 transition-all duration-200"
               >
                 <VideoOff className="h-4 w-4 mr-2" />
                 Disable Camera
@@ -352,7 +420,7 @@ export default function ExerciseRunner({
         </Card>
 
         {/* Instructions Panel */}
-        <Card className="bg-black/[0.96] border-white/10 p-6">
+        <Card className="bg-black/96 border-white/10 p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 rounded-lg bg-purple-500/20">
               <Activity className="h-5 w-5 text-purple-400" />
@@ -363,7 +431,7 @@ export default function ExerciseRunner({
           <ol className="space-y-4">
             {instructions.map((instruction, index) => (
               <li key={index} className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-sm text-white font-medium">
+                <span className="shrink-0 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-sm text-white font-medium">
                   {index + 1}
                 </span>
                 <span className="text-neutral-300">{instruction}</span>
