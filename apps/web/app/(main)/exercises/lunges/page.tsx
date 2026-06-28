@@ -146,8 +146,8 @@ export default function LungesPage() {
     setStats({ reps: s.reps, angle: displayAngle, feedback, stage: s.stage ?? '' })
     const now = Date.now()
     if (now - lastLandmarkUpdate.current > 333) {
-      if (results.poseLandmarks || (results.landmarks && results.landmarks[0])) {
-        const marks = results.poseLandmarks || results.landmarks[0]
+      if (results.landmarks && results.landmarks[0]) {
+        const marks = results.landmarks[0]
         setCurrentLandmarks(marks)
         lastLandmarkUpdate.current = now
       }

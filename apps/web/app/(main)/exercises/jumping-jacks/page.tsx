@@ -165,8 +165,8 @@ export default function JumpingJacksPage() {
     setStats({ reps: s.reps, angle: displayAngle, feedback })
     const now = Date.now()
     if (now - lastLandmarkUpdate.current > 333) {
-      if (results.poseLandmarks || (results.landmarks && results.landmarks[0])) {
-        setCurrentLandmarks(results.poseLandmarks || results.landmarks[0])
+      if (results.landmarks && results.landmarks[0]) {
+        setCurrentLandmarks(results.landmarks[0])
         lastLandmarkUpdate.current = now
       }
     }

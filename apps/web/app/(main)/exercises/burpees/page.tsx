@@ -166,8 +166,8 @@ export default function BurpeesPage() {
     setStats({ reps: s.reps, angle: displayAngle, feedback })
     const now = Date.now()
     if (now - lastLandmarkUpdate.current > 333) {
-      if (results.poseLandmarks || (results.landmarks && results.landmarks[0])) {
-        const marks = results.poseLandmarks || results.landmarks[0]
+      if (results.landmarks && results.landmarks[0]) {
+        const marks = results.landmarks[0]
         setCurrentLandmarks(marks)
         lastLandmarkUpdate.current = now
       }
@@ -178,7 +178,8 @@ export default function BurpeesPage() {
   const start = useCallback(async () => {
     setErr('')
     await startCamera()
-    stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }    setStats({ reps: 0, angle: 0, feedback: '' })
+    stateRef.current = { stage: 'up', smoothed: 0, cooldown: 0, reps: 0, started: false }
+    setStats({ reps: 0, angle: 0, feedback: '' })
     setRunning(true)
     rafRef.current = requestAnimationFrame(detect)
   }, [startCamera, detect])
